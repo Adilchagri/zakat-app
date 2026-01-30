@@ -1,50 +1,98 @@
-# Welcome to your Expo app 👋
+# ☪ Zakat Tracker — Islamic Zakat Calculator & Payment Manager
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**Zakat Tracker** is a modern, accurate, and user-friendly Islamic application designed to **calculate Zakat**, **track annual payments**, and **help Muslims fulfill this pillar of Islam correctly and consistently**, based on **authentic Islamic sources and Maliki Fiqh principles**.
 
-## Get started
+---
 
-1. Install dependencies
+## 🌟 Key Features
 
-   ```bash
-   npm install
-   ```
+### 🧮 Accurate Zakat Calculation
+- Gold, Silver & Combined Nisab calculation
+- Live Gold & Silver prices
+- Real-time USD → MAD exchange rates
+- Automatic Nisab threshold detection
+- 100% compliant with **Maliki Madhab**
 
-2. Start the app
+### 📊 Smart Zakat Tracking System
+- Set your **annual Zakat obligation**
+- Track **multiple payments throughout the year**
+- Visual **progress bar**
+- Automatic calculation of:
+  - Total Paid
+  - Remaining Balance
+  - Completion Percentage
 
-   ```bash
-   npx expo start
-   ```
+### 🗓 Payment History Management
+- Add payments anytime
+- Edit & delete previous payments
+- Monthly tracking
+- Automatic yearly reset
 
-In the output, you'll find options to open the app in a
+### 📖 Islamic Education Layer
+- Rotating **Qur’an verses**
+- Authentic **Hadith**
+- Verified **Maliki jurisprudence rulings**
+- Arabic & English support
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+### 🌍 Multilingual Support
+- Arabic 🇲🇦
+- English 🇬🇧
+- Full RTL compatibility
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### 🎨 Premium UI & UX
+- Elegant 3D card interface
+- Smooth animations
+- Islamic aesthetic design
+- Optimized for all screen sizes
 
-## Get a fresh project
+---
 
-When you're ready, run:
+## 🏗 Technical Stack
+
+- **React Native**
+- **Expo Router**
+- **AsyncStorage**
+- **EAS Build**
+- **REST APIs** (Gold, Silver & Forex pricing)
+
+---
+
+## ⚙ Core Calculation Logic
+
+| Parameter | Value |
+|-------------|---------|
+Gold Nisab | 85 grams  
+Silver Nisab | 595 grams  
+Zakat Rate | 2.5%  
+
+The application automatically selects **the most beneficial Nisab for the poor** in accordance with **Maliki jurisprudence**.
+
+---
+
+## 🔐 Data Privacy
+
+All data:
+- Stored **locally only**
+- No user data is transmitted
+- No analytics or tracking
+- Fully offline after first price sync
+
+---
+
+## 📱 Screens Overview
+
+- Splash Screen
+- Zakat Calculator
+- Price Dashboard
+- Payment Tracking
+- Progress Analytics
+- History Page
+- Islamic Quote Slider
+
+---
+
+## 🚀 Installation & Development
 
 ```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+npm install
+npx expo start
