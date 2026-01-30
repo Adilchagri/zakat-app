@@ -1,20 +1,22 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { moderateScale } from '../utils/scale';
 
-export default function PaymentListItem({ payment, onEdit, onDelete, lang, currency = 'MAD' }) {
-  const date = new Date(payment.timestamp);
-  const monthNames = lang === 'ar' 
-    ? ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
-    : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export default function PaymentListItem({ payment, onEdit, onDelete, lang, currency }) {
+  const displayCurrency = currency || (lang === 'ar' ? 'د.م.' : 'MAD');
 
   return (
     <View style={styles.paymentItem}>
       <View style={styles.paymentInfo}>
-        <Text style={styles.paymentMonth}>
-          {date.getDate()} {monthNames[date.getMonth()]} {date.getFullYear()}
-        </Text>
-        <Text style={styles.paymentAmount}>
-          {payment.amount.toFixed(2)} {currency}
+        <Text 
+          style={styles.paymentAmount} 
+          numberOfLines={1} 
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+          allowFontScaling={false}
+        >
+          {payment.amount.toFixed(0)} {displayCurrency}
         </Text>
       </View>
       <View style={styles.paymentActions}>
@@ -32,46 +34,43 @@ export default function PaymentListItem({ payment, onEdit, onDelete, lang, curre
 const styles = StyleSheet.create({
   paymentItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: moderateScale(10),
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
-    backgroundColor: '#fff',
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    marginBottom: 6,
+    minHeight: moderateScale(52),
+    paddingHorizontal: moderateScale(4),
   },
+
   paymentInfo: {
     flexDirection: 'row',
-    gap: 10,
     alignItems: 'center',
+    flex: 1,
+    marginRight: moderateScale(8),
   },
-  paymentMonth: {
-    fontSize: 12,
-    color: '#666',
-    backgroundColor: '#f5f5f5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
+
   paymentAmount: {
-    fontWeight: 'bold',
-    color: '#1a4d2e',
-    fontSize: 16,
+    fontSize: moderateScale(22),
+    fontWeight: '800',
+    color: '#111',
+    flex: 1,
   },
+
   paymentActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: moderateScale(10),
+    width: moderateScale(72),
+    justifyContent: 'flex-end',
+    flexShrink: 0,
   },
   editBtn: {
-    padding: 6,
+    padding: moderateScale(5),
   },
   deleteBtn: {
-    padding: 6,
+    padding: moderateScale(5),
   },
   actionIcon: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
   },
+
 });

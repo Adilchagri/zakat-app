@@ -2,13 +2,23 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator,
   Alert, Animated, Dimensions, StatusBar, Modal,
-  KeyboardAvoidingView, ScrollView, Platform, FlatList
+  KeyboardAvoidingView, ScrollView, Platform, FlatList, LayoutAnimation, UIManager
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AppGuide from '../components/AppGuide';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useZakatData } from '../hooks/useZakatData';
 import WealthDetailModal from '../components/WealthDetailModal';
+import * as Haptics from 'expo-haptics';
+import { moderateScale } from '../utils/scale';
+
+
+// Enable LayoutAnimation for Android
+if (Platform.OS === 'android') {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
 
 // --- CONFIGURATION ---
 const NISAB_GRAMS = 85;
@@ -191,7 +201,7 @@ const islamicQuotes = [
 const content = {
   en: {
     title: "Zakat",
-    subtitle: "Calculator",
+    subtitle: "Tracker",
     goldPrice: "Gold (USD/oz)",
     silverPrice: "Silver (USD/oz)",
     exchangeRate: "USD → MAD",
@@ -243,7 +253,7 @@ const content = {
   },
   ar: {
     title: "الزكاة",
-    subtitle: "حاسبة",
+    subtitle: "تتبع",
     goldPrice: "الذهب",
     silverPrice: "الفضة",
     exchangeRate: "دولار ← درهم",
@@ -397,7 +407,7 @@ const IslamicQuoteSlider = ({ lang }) => {
           }),
         ]).start();
       });
-    }, 5000);
+    }, 8000); // Slower interval for readability
 
     return () => clearInterval(interval);
   }, []);
@@ -493,7 +503,13 @@ const AboutModal = ({ visible, onClose, lang }) => {
             <Text style={styles.yearText}>© 2026</Text>
           </View>
 
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+          <TouchableOpacity 
+            style={styles.closeButton} 
+            onPress={() => {
+              Haptics.selectionAsync();
+              onClose();
+            }}
+          >
             <Text style={styles.closeButtonText}>{t.close}</Text>
           </TouchableOpacity>
         </View>
@@ -529,6 +545,7 @@ const PaymentModal = ({ visible, onClose, onSave, lang, editingPayment }) => {
   const handleSave = () => {
     const amt = parseFloat(amount);
     if (isNaN(amt) || amt <= 0) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
         lang === 'ar' ? 'خطأ' : 'Error',
         lang === 'ar' ? 'الرجاء إدخال مبلغ صحيح' : 'Please enter a valid amount'
@@ -536,6 +553,7 @@ const PaymentModal = ({ visible, onClose, onSave, lang, editingPayment }) => {
       return;
     }
 
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onSave({
       amount: amt,
       date: date,
@@ -583,7 +601,10 @@ const PaymentModal = ({ visible, onClose, onSave, lang, editingPayment }) => {
           <View style={styles.modalActions}>
             <TouchableOpacity
               style={[styles.modalButton, styles.cancelButton]}
-              onPress={onClose}
+              onPress={() => {
+                Haptics.selectionAsync();
+                onClose();
+              }}
             >
               <Text style={styles.cancelButtonText}>{t.cancel}</Text>
             </TouchableOpacity>
@@ -628,29 +649,52 @@ const ProgressBar = ({ progress, lang }) => {
   );
 };
 
+// ... (imports remain the same)
+
+// Month names
+const monthNames = {
+  ar: ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'],
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+};
+
+// ... (other configurations remain the same)
+
 // ===== PAYMENT LIST ITEM =====
 const PaymentListItem = ({ payment, onEdit, onDelete, lang }) => {
   const t = content[lang];
-  const date = new Date(payment.timestamp);
-  const monthNames = lang === 'ar'
-    ? ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
-    : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Date is removed to save space
 
   return (
     <View style={styles.paymentItem}>
       <View style={styles.paymentInfo}>
-        <Text style={styles.paymentMonth}>
-          {monthNames[date.getMonth()]} {date.getFullYear()}
-        </Text>
-        <Text style={styles.paymentAmount}>
-          {payment.amount.toFixed(2)} {t.currency}
+        {/* Date removed */}
+        <Text 
+          style={styles.paymentAmount} 
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+          allowFontScaling={false}
+        >
+          {payment.amount.toFixed(0)} {t.currency}
         </Text>
       </View>
       <View style={styles.paymentActions}>
-        <TouchableOpacity onPress={() => onEdit(payment)} style={styles.editBtn}>
+        <TouchableOpacity 
+          onPress={() => {
+            Haptics.selectionAsync();
+            onEdit(payment);
+          }} 
+          style={styles.editBtn}
+        >
           <Text style={styles.actionIcon}>✏️</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => onDelete(payment)} style={styles.deleteBtn}>
+        <TouchableOpacity 
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            onDelete(payment);
+          }} 
+          style={styles.deleteBtn}
+        >
           <Text style={styles.actionIcon}>🗑️</Text>
         </TouchableOpacity>
       </View>
@@ -672,6 +716,7 @@ export default function App() {
   const [rateSource, setRateSource] = useState('');
   const [localPriceGoldGram, setLocalPriceGoldGram] = useState(null);
   const [localPriceSilverGram, setLocalPriceSilverGram] = useState(null);
+  const [isRateFocused, setIsRateFocused] = useState(false);
 
   const [nisabType, setNisabType] = useState('silver');
   const [loading, setLoading] = useState(true);
@@ -717,6 +762,7 @@ export default function App() {
   };
 
   const handleDeletePayment = (payment) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     Alert.alert(
       lang === 'ar' ? 'تأكيد الحذف' : 'Confirm Delete',
       lang === 'ar'
@@ -734,15 +780,18 @@ export default function App() {
   };
 
   const handleAddWealth = async (amount, description) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await addWealthEntry(amount, description);
     // Recalculate will be triggered by effect
   };
 
   const handleDeleteWealth = async (id) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await deleteWealthEntry(id);
   };
 
   const handleResetMonth = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     console.log('Reset button clicked!');
     Alert.alert(
       t.confirmReset,
@@ -964,6 +1013,7 @@ export default function App() {
 
   // Recalculate Zakat when Wealth changes or Prices change
   useEffect(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     if (localPriceGoldGram && localPriceSilverGram && currentMonthData.totalWealth >= 0) {
       calculateZakat();
     }
@@ -1084,28 +1134,40 @@ export default function App() {
 
               <View style={styles.headerButtons}>
                 <TouchableOpacity
-                  onPress={() => setShowGuide(true)}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setShowGuide(true);
+                  }}
                   style={styles.aboutBtn}
                 >
                   <Text style={styles.aboutText}>🎓</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => router.push('/history')}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    router.push('/history');
+                  }}
                   style={styles.aboutBtn}
                 >
                   <Text style={styles.aboutText}>📜</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => setShowAbout(true)}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setShowAbout(true);
+                  }}
                   style={styles.aboutBtn}
                 >
                   <Text style={styles.aboutText}>ℹ️</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => setLang(lang === 'en' ? 'ar' : 'en')}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setLang(lang === 'en' ? 'ar' : 'en');
+                  }}
                   style={styles.langBtn}
                 >
                   <Text style={styles.langText}>{lang === 'en' ? 'ع' : 'EN'}</Text>
@@ -1126,7 +1188,10 @@ export default function App() {
                     styles.nisabBtn,
                     nisabType === 'silver' && styles.nisabBtnActive
                   ]}
-                  onPress={() => setNisabType('silver')}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setNisabType('silver');
+                  }}
                 >
                   <Text style={[
                     styles.nisabBtnText,
@@ -1144,7 +1209,10 @@ export default function App() {
                     styles.nisabBtn,
                     nisabType === 'gold' && styles.nisabBtnActive
                   ]}
-                  onPress={() => setNisabType('gold')}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setNisabType('gold');
+                  }}
                 >
                   <Text style={[
                     styles.nisabBtnText,
@@ -1159,7 +1227,10 @@ export default function App() {
                     styles.nisabBtn,
                     nisabType === 'both' && styles.nisabBtnActive
                   ]}
-                  onPress={() => setNisabType('both')}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setNisabType('both');
+                  }}
                 >
                   <Text style={[
                     styles.nisabBtnText,
@@ -1172,10 +1243,10 @@ export default function App() {
             </View>
 
             {/* Cards Grid */}
-            <View style={styles.cardsGrid}>
+            <View style={[styles.cardsGrid, width < 380 && { flexDirection: 'column' }]}>
 
-              {/* Left Column */}
-              <View style={styles.leftColumn}>
+              {/* Left Column (Prices) */}
+              <View style={width < 380 ? { gap: 10 } : styles.leftColumn}>
 
                 {/* Gold Price Card */}
                 <View style={[styles.card3D, styles.goldCard]}>
@@ -1184,8 +1255,12 @@ export default function App() {
                     <ActivityIndicator size="small" color="#C9A961" />
                   ) : (
                     <>
-                      <Text style={styles.cardValue}>${goldPriceUSD?.toFixed(0)}</Text>
-                      <Text style={styles.cardSubvalue}>{localPriceGoldGram} {t.currency}/g</Text>
+                      <Text style={styles.cardValue} allowFontScaling={false}>
+                        ${goldPriceUSD?.toFixed(0)}
+                      </Text>
+                      <Text style={styles.cardSubvalue} adjustsFontSizeToFit numberOfLines={1}>
+                        {localPriceGoldGram} {t.currency}/g
+                      </Text>
                     </>
                   )}
                 </View>
@@ -1197,8 +1272,12 @@ export default function App() {
                     <ActivityIndicator size="small" color="#999" />
                   ) : (
                     <>
-                      <Text style={styles.cardValue}>${silverPriceUSD?.toFixed(2)}</Text>
-                      <Text style={styles.cardSubvalue}>{localPriceSilverGram} {t.currency}/g</Text>
+                      <Text style={styles.cardValue} adjustsFontSizeToFit numberOfLines={1}>
+                        ${silverPriceUSD?.toFixed(2)}
+                      </Text>
+                      <Text style={styles.cardSubvalue} adjustsFontSizeToFit numberOfLines={1}>
+                        {localPriceSilverGram} {t.currency}/g
+                      </Text>
                     </>
                   )}
                 </View>
@@ -1213,9 +1292,14 @@ export default function App() {
                   </View>
                   <View style={styles.rateInputRow}>
                     <TextInput
-                      style={styles.rateInput}
+                      style={[
+                        styles.rateInput, 
+                        isRateFocused && styles.rateInputFocused
+                      ]}
                       value={exchangeRate}
                       keyboardType="decimal-pad"
+                      onFocus={() => setIsRateFocused(true)}
+                      onBlur={() => setIsRateFocused(false)}
                       onChangeText={handleRateChange}
                       placeholder="9.09"
                     />
@@ -1225,6 +1309,7 @@ export default function App() {
                 {/* Update Button */}
                 <TouchableOpacity
                   onPress={() => {
+                    Haptics.selectionAsync();
                     setRateSource('');
                     fetchAllPrices();
                   }}
@@ -1236,8 +1321,8 @@ export default function App() {
 
               </View>
 
-              {/* Right Column */}
-              <View style={styles.rightColumn}>
+              {/* Right Column (Wealth & Results) */}
+              <View style={width < 380 ? { gap: 10 } : styles.rightColumn}>
 
                 {/* Wealth Input Card */}
                 <View style={[styles.card3D, styles.wealthCard]}>
@@ -1248,16 +1333,24 @@ export default function App() {
                     </Text>
                   </View>
 
-                  <Text style={styles.totalWealthDisplay}>
+                  <Text 
+                    style={styles.totalWealthDisplay} 
+                    allowFontScaling={false}
+                    adjustsFontSizeToFit 
+                    numberOfLines={1}
+                  >
                     {currentMonthData.totalWealth.toFixed(2)} <Text style={styles.currencySmall}>{t.currency}</Text>
                   </Text>
 
                   <TouchableOpacity
                     style={styles.manageWealthBtn}
-                    onPress={() => setShowWealthModal(true)}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setShowWealthModal(true);
+                    }}
                   >
                     <Text style={styles.manageWealthText}>
-                      {lang === 'ar' ? '➕ إدارة / إضافة أموال' : '➕ Manage / Add Funds'}
+                      {lang === 'ar' ? '➕ إدارة / إضافة' : '➕ Manage / Add'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1269,7 +1362,7 @@ export default function App() {
                     zakatResult.payable ? styles.trackingCard : styles.resultCard,
                     !zakatResult.payable && styles.resultAmber
                   ]}>
-
+                    {/* ... keeping result card content exactly the same ... */}
                     {!zakatResult.payable ? (
                       // Below Nisab View
                       <View>
@@ -1293,7 +1386,12 @@ export default function App() {
                       // Payable View with Tracking
                       <View>
                         <View style={styles.trackingHeader}>
-                          <Text style={styles.trackingTitle}>📊 {t.progress}</Text>
+                          <View>
+                            <Text style={styles.trackingTitle}>📊 {t.progress}</Text>
+                            <Text style={styles.currentMonthText}>
+                              {monthNames[lang][new Date().getMonth()]} {new Date().getFullYear()}
+                            </Text>
+                          </View>
                           <TouchableOpacity
                             onPress={handleResetMonth}
                             style={styles.resetBtn}
@@ -1309,14 +1407,14 @@ export default function App() {
                         <View style={styles.trackingStats}>
                           <View style={styles.statItem}>
                             <Text style={styles.statLabel}>{t.amountDue}</Text>
-                            <Text style={styles.statValue}>
+                            <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>
                               {currentMonthData.totalZakatDue?.toFixed(2)}
                             </Text>
                           </View>
                           <View style={styles.statDivider} />
                           <View style={styles.statItem}>
                             <Text style={styles.statLabel}>{t.remaining}</Text>
-                            <Text style={[styles.statValue, styles.remainingValue]}>
+                            <Text style={[styles.statValue, styles.remainingValue]} adjustsFontSizeToFit numberOfLines={1}>
                               {getRemaining().toFixed(2)}
                             </Text>
                           </View>
@@ -1324,7 +1422,10 @@ export default function App() {
 
                         <TouchableOpacity
                           style={styles.addPaymentBtn}
-                          onPress={() => setShowPaymentModal(true)}
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            setShowPaymentModal(true);
+                          }}
                         >
                           <Text style={styles.addPaymentText}>➕ {t.addPayment}</Text>
                         </TouchableOpacity>
@@ -1359,6 +1460,7 @@ export default function App() {
 
             </View>
 
+
             {/* Footer */}
             <View style={styles.footer}>
               <Text style={styles.footerText}>
@@ -1389,69 +1491,78 @@ const styles = StyleSheet.create({
 
   // NEW Styles for Nisab Selector
   nisabSelector: {
-    backgroundColor: '#C9A96115',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(201, 169, 97, 0.3)',
+    backgroundColor: '#fff',
+    borderRadius: 16, // More rounded
+    padding: 14,
+    marginBottom: 16,
+    // Removed border, added shadow instead for cleaner look
+    shadowColor: '#C9A961',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
   },
   nisabSelectorLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 'bold',
     color: '#C9A961',
-    marginBottom: 8,
+    marginBottom: 10,
     textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   nisabButtons: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 10, // Increased gap
   },
   nisabBtn: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 10,
+    backgroundColor: '#f8f9fa', // Softer grey
+    paddingVertical: 12,
     paddingHorizontal: 8,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'transparent', // Cleaner default state
     alignItems: 'center',
   },
   nisabBtnActive: {
     backgroundColor: '#1a4d2e',
-    borderColor: '#C9A961',
+    borderColor: '#1a4d2e',
   },
   nisabBtnText: {
     fontSize: 11,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#666',
   },
   nisabBtnTextActive: {
     color: '#C9A961',
+    fontWeight: 'bold',
   },
   recommendedText: {
-    fontSize: 8,
+    fontSize: 9,
     color: '#C9A961',
-    marginTop: 2,
+    marginTop: 4,
+    fontWeight: 'bold',
   },
 
   silverCard: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#fff',
     borderLeftWidth: 4,
-    borderLeftColor: '#999999',
+    borderLeftColor: '#A0A0A0', // Softer silver
   },
 
   cardSubvalue: {
-    fontSize: 10,
-    color: '#666',
-    marginTop: 2,
+    fontSize: 11,
+    color: '#888',
+    marginTop: 4,
+    fontWeight: '500',
   },
 
   nisabUsedText: {
-    fontSize: 9,
-    color: '#666',
+    fontSize: 10,
+    color: '#888',
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
     fontStyle: 'italic',
   },
 
@@ -1532,16 +1643,16 @@ const styles = StyleSheet.create({
 
   mainContent: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 20,
+    paddingHorizontal: 20, // Increased horizontal padding
+    paddingTop: 60,
+    paddingBottom: 30,
   },
 
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 20,
   },
   titleContainer: {
     flexDirection: 'row',
@@ -1550,10 +1661,10 @@ const styles = StyleSheet.create({
   titleIcon: {
     fontSize: 36,
     color: '#C9A961',
-    marginRight: 10,
+    marginRight: 12,
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
     color: '#C9A961',
     letterSpacing: 1,
@@ -1562,17 +1673,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#E8D7B5',
     letterSpacing: 1.5,
+    opacity: 0.8,
   },
   headerButtons: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
   },
   aboutBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(201, 169, 97, 0.2)',
-    borderWidth: 2,
+    backgroundColor: 'rgba(201, 169, 97, 0.15)',
+    borderWidth: 1.5,
     borderColor: '#C9A961',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1584,8 +1696,8 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(201, 169, 97, 0.2)',
-    borderWidth: 2,
+    backgroundColor: 'rgba(201, 169, 97, 0.15)',
+    borderWidth: 1.5,
     borderColor: '#C9A961',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1684,19 +1796,13 @@ const styles = StyleSheet.create({
   },
 
   quoteSlider: {
-    backgroundColor: '#C9A96125',
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)', // cleaner look
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#C9A961',
-    borderLeftWidth: 4,
-    borderLeftColor: '#C9A961',
-    shadowColor: '#C9A961',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    borderColor: 'rgba(201, 169, 97, 0.3)',
+    // Removed distracting strong borderLeft
   },
   quoteHeader: {
     flexDirection: 'row',
@@ -1709,7 +1815,7 @@ const styles = StyleSheet.create({
   },
   quoteIndicators: {
     flexDirection: 'row',
-    gap: 4,
+    gap: 6,
   },
   indicator: {
     width: 6,
@@ -1719,86 +1825,87 @@ const styles = StyleSheet.create({
   },
   indicatorActive: {
     backgroundColor: '#C9A961',
-    width: 16,
+    width: 20, // wider active indicator
   },
   quoteTextAr: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 'bold',
     color: '#C9A961',
     textAlign: 'center',
-    marginBottom: 8,
-    lineHeight: 26,
+    marginBottom: 10,
+    lineHeight: 28,
   },
   quoteTextEn: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#E8D7B5',
     textAlign: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
     fontStyle: 'italic',
+    lineHeight: 20,
   },
   quoteReference: {
-    fontSize: 10,
-    color: 'rgba(232, 215, 181, 0.7)',
+    fontSize: 11,
+    color: 'rgba(232, 215, 181, 0.6)',
     textAlign: 'center',
     fontWeight: '600',
+    marginTop: 4,
   },
 
   cardsGrid: {
     flex: 1,
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 5,
+    gap: 16, // Increased gap for breathability
+    marginBottom: 10,
   },
 
   leftColumn: {
     flex: 1,
-    gap: 10,
+    gap: 16,
   },
   rightColumn: {
     flex: 1.3,
-    gap: 10,
+    gap: 16,
   },
 
   card3D: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 24, // Smoother corners
+    padding: 16,
+    // Softer shadow
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
     shadowRadius: 12,
-    elevation: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(201, 169, 97, 0.3)',
-    transform: [{ perspective: 1000 }],
+    elevation: 6,
+    // Removed explicit border to look cleaner
   },
 
   goldCard: {
-    backgroundColor: '#FFFAF0',
+    backgroundColor: '#fff',
     borderLeftWidth: 4,
     borderLeftColor: '#C9A961',
   },
   rateCard: {
-    backgroundColor: '#F0F8FF',
+    backgroundColor: '#fff',
     borderLeftWidth: 4,
     borderLeftColor: '#1976D2',
   },
   wealthCard: {
-    backgroundColor: '#E6F7EB',
+    backgroundColor: '#fff',
     borderLeftWidth: 4,
     borderLeftColor: '#2E7D32',
     flex: 1,
   },
   resultCard: {
-    minHeight: 190,
+    minHeight: 200,
   },
   resultGreen: {
-    backgroundColor: '#E6F7EB',
+    backgroundColor: '#F1F8E9', // Very light green tint
     borderLeftWidth: 5,
     borderLeftColor: '#1a4d2e',
   },
   resultAmber: {
-    backgroundColor: '#FFF8E6',
+    backgroundColor: '#FFF8E1', // Very light amber tint
     borderLeftWidth: 5,
     borderLeftColor: '#C9A961',
   },
@@ -1807,27 +1914,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   cardLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
-    color: '#666',
+    color: '#888',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   cardLabelLarge: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#1a4d2e',
     marginBottom: 12,
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   cardValue: {
-    fontSize: 20,
+    fontSize: moderateScale(22),
     fontWeight: 'bold',
     color: '#333',
-    marginTop: 4,
+    marginTop: 6,
   },
 
   badge: {
@@ -1843,31 +1951,35 @@ const styles = StyleSheet.create({
   },
 
   rateInputRow: {
-    marginTop: 6,
+    marginTop: 8,
   },
   rateInput: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
-    backgroundColor: 'rgba(25, 118, 210, 0.05)',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#1976D2',
+    borderColor: 'transparent',
+  },
+  rateInputFocused: {
+    borderColor: '#C9A961',
+    backgroundColor: '#fff',
   },
 
   updateBtn3D: {
     backgroundColor: '#C9A961',
-    height: 44,
-    borderRadius: 12,
+    height: 48,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#C9A961',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 8,
+    elevation: 4,
   },
   updateText: {
     fontSize: 22,
@@ -1909,31 +2021,31 @@ const styles = StyleSheet.create({
   resultHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   resultIcon: {
     fontSize: 24,
-    marginRight: 8,
+    marginRight: 10,
   },
   resultTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#1a4d2e',
   },
   nisabRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    padding: 10,
-    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    padding: 12,
+    borderRadius: 12,
     marginBottom: 12,
   },
   nisabLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#666',
   },
   nisabValue: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#333',
   },
@@ -1960,61 +2072,72 @@ const styles = StyleSheet.create({
   },
   diffBox: {
     alignItems: 'center',
-    padding: 10,
+    padding: 14,
     backgroundColor: 'rgba(201, 169, 97, 0.1)',
-    borderRadius: 8,
+    borderRadius: 12,
     marginTop: 8,
   },
   diffLabel: {
-    fontSize: 10,
-    color: '#666',
+    fontSize: 11,
+    color: '#C9A961',
+    fontWeight: '600',
+    marginBottom: 4,
   },
   diffValue: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#C9A961',
   },
 
   footer: {
-    padding: 20,
+    padding: 24,
     alignItems: 'center',
   },
   footerText: {
-    color: '#666',
-    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 11,
   },
 
   // ===== NEW STYLES =====
   currentMonthBadge: {
-    fontSize: 10,
-    color: '#1a4d2e',
-    backgroundColor: 'rgba(26, 77, 46, 0.1)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  totalWealthDisplay: {
-    fontSize: 26,
+    fontSize: 11,
     fontWeight: 'bold',
     color: '#1a4d2e',
-    marginVertical: 8,
+    backgroundColor: 'rgba(26, 77, 46, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  totalWealthDisplay: {
+    fontSize: moderateScale(28),
+    fontWeight: 'bold',
+    color: '#1a4d2e',
+    marginVertical: 12,
     textAlign: 'center',
   },
   currencySmall: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 'normal',
+    color: '#666',
   },
   manageWealthBtn: {
     backgroundColor: '#1a4d2e',
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 12,
+    shadowColor: '#1a4d2e',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   manageWealthText: {
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
+    letterSpacing: 0.5,
   },
   trackingCard: {
     backgroundColor: '#FFFFFF',
@@ -2025,25 +2148,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
     zIndex: 100,
     position: 'relative',
   },
   trackingTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#1a4d2e',
+    flex: 1, // Ensure title takes space without pushing delete button
   },
   resetBtn: {
     padding: 8,
-    minWidth: 40,
-    minHeight: 40,
+    minWidth: 44,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(201, 169, 97, 0.1)',
-    borderRadius: 8,
+    backgroundColor: '#FFF8E1', // lighter background
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(201, 169, 97, 0.3)',
+    borderColor: 'transparent',
     zIndex: 100,
     elevation: 100,
     position: 'relative',
@@ -2052,34 +2176,36 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   progressContainer: {
-    height: 8,
-    backgroundColor: '#eee',
-    borderRadius: 4,
+    height: 10, // slightly thicker
+    backgroundColor: '#f0f0f0',
+    borderRadius: 5,
     overflow: 'hidden',
-    marginVertical: 10,
+    marginVertical: 14,
   },
   progressBarBg: {
     flex: 1,
-    backgroundColor: '#eee',
+    backgroundColor: '#f0f0f0',
   },
   progressBarFill: {
     height: '100%',
     backgroundColor: '#1a4d2e',
+    borderRadius: 5,
   },
   progressText: {
     position: 'absolute',
     right: 0,
-    top: -15,
-    fontSize: 10,
-    color: '#666',
+    top: -18,
+    fontSize: 11,
+    color: '#888',
+    fontWeight: '600',
   },
   trackingStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
-    backgroundColor: '#f9f9f9',
-    padding: 8,
-    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 12,
   },
   statItem: {
     flex: 1,
@@ -2087,15 +2213,18 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: 1,
-    backgroundColor: '#ddd',
+    backgroundColor: '#e0e0e0',
+    height: '80%',
+    alignSelf: 'center',
   },
   statLabel: {
-    fontSize: 10,
-    color: '#666',
-    marginBottom: 2,
+    fontSize: 11,
+    color: '#888',
+    marginBottom: 4,
+    textTransform: 'uppercase',
   },
   statValue: {
-    fontSize: 16,
+    fontSize: moderateScale(16),
     fontWeight: 'bold',
     color: '#333',
   },
@@ -2104,125 +2233,161 @@ const styles = StyleSheet.create({
   },
   addPaymentBtn: {
     backgroundColor: '#C9A961',
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
+    shadowColor: '#C9A961',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   addPaymentText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 13,
   },
   paymentList: {
-    marginTop: 4,
+    marginTop: 6,
   },
   paymentListTitle: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#999',
-    marginBottom: 4,
-    textTransform: 'uppercase'
+    fontWeight: '700',
+    color: '#aaa',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   paymentItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: moderateScale(10),
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#f0f0f0',
   },
   paymentInfo: {
     flexDirection: 'row',
     gap: 8,
     alignItems: 'center',
+    flex: 1,
+    marginRight: moderateScale(8), 
   },
   paymentMonth: {
-    fontSize: 10,
-    color: '#999',
-    backgroundColor: '#eee',
-    paddingHorizontal: 4,
-    borderRadius: 4,
+    fontSize: moderateScale(9),
+    color: '#888',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: moderateScale(6),
+    paddingVertical: moderateScale(3),
+    borderRadius: 6,
+    overflow: 'hidden',
+    fontWeight: '700',
+    marginRight: moderateScale(4),
   },
   paymentAmount: {
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: moderateScale(22),
+    fontWeight: '800',
+    color: '#111',
+    textAlign: 'left',
+    flex: 1,
   },
   paymentActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: moderateScale(10),
+    width: moderateScale(72), 
+    justifyContent: 'flex-end',
+    flexShrink: 0,
   },
   editBtn: {
-    padding: 4,
+    padding: moderateScale(5),
   },
   deleteBtn: {
-    padding: 4,
+    padding: moderateScale(5),
   },
   actionIcon: {
-    fontSize: 14,
+    fontSize: moderateScale(16),
   },
 
   // Payment Modal Styles
   paymentModalContent: {
     backgroundColor: '#FFF',
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 24,
+    padding: 24,
     width: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
   },
   paymentModalTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#1a4d2e',
-    marginBottom: 20,
+    marginBottom: 24,
     textAlign: 'center',
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: '#666',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   paymentInput: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 18,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 14,
+    padding: 16,
+    fontSize: 20,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#eee',
+    color: '#333',
+    fontWeight: '600',
   },
   dateDisplay: {
-    fontSize: 16,
-    padding: 12,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 10,
+    fontSize: 18,
+    padding: 16,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 14,
     color: '#333',
+    fontWeight: '500',
+    borderWidth: 1,
+    borderColor: '#eee',
+    overflow: 'hidden',
   },
   modalActions: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 10,
+    gap: 16,
+    marginTop: 12,
   },
   modalButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 16,
+    borderRadius: 14,
     alignItems: 'center',
   },
   cancelButton: {
-    backgroundColor: '#eee',
+    backgroundColor: '#f5f5f5',
   },
   saveButton: {
     backgroundColor: '#1a4d2e',
+    shadowColor: '#1a4d2e',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   cancelButtonText: {
     color: '#666',
     fontWeight: 'bold',
+    fontSize: 16,
   },
   saveButtonText: {
     color: '#fff',
     fontWeight: 'bold',
+    fontSize: 16,
   },
 });

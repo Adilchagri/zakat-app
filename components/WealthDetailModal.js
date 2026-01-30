@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
-  View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, FlatList, Alert, Platform 
+  View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Alert, Platform, KeyboardAvoidingView, ScrollView 
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 
 export default function WealthDetailModal({ 
   visible, onClose, wealthEntries, onAdd, onDelete, lang, currency 
@@ -13,14 +14,17 @@ export default function WealthDetailModal({
   const handleAdd = () => {
     const val = parseFloat(amount);
     if (isNaN(val) || val <= 0) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(lang === 'ar' ? 'خطأ' : 'Error', lang === 'ar' ? 'مبلغ غير صحيح' : 'Invalid amount');
       return;
     }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onAdd(val);
     setAmount('');
   };
 
   const handleDelete = (id) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (Platform.OS === 'web') {
       if (window.confirm(lang === 'ar' ? 'هل تريد حذف هذا المبلغ؟' : 'Delete this entry?')) {
         onDelete(id);
@@ -48,65 +52,78 @@ export default function WealthDetailModal({
       visible={visible}
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView 
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>
-            {lang === 'ar' ? '💰 تفاصيل الأموال' : '💰 Wealth Details'}
-          </Text>
-
-          {/* Add New Entry Form */}
-          <View style={styles.addForm}>
-            <Text style={[styles.label, isRTL && styles.textRight]}>
-              {lang === 'ar' ? 'إضافة مبلغ جديد' : 'Add New Amount'}
+          <ScrollView 
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.modalTitle}>
+              {lang === 'ar' ? '💰 تفاصيل الأموال' : '💰 Wealth Details'}
             </Text>
-            <View style={styles.inputRow}>
-              <TextInput
-                style={[styles.input, { flex: 1 }]}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                value={amount}
-                onChangeText={setAmount}
-              />
-            </View>
-            <TouchableOpacity style={styles.addBtn} onPress={handleAdd}>
-              <Text style={styles.addBtnText}>{lang === 'ar' ? 'إضافة' : 'Add'}</Text>
-            </TouchableOpacity>
-          </View>
 
-          {/* List of Entries */}
-          <Text style={[styles.label, { marginTop: 16 }, isRTL && styles.textRight]}>
-            {lang === 'ar' ? 'سجل الإضافات هذا الشهر' : 'Entries this month'}
-          </Text>
-          
-          <FlatList
-            data={wealthEntries}
-            keyExtractor={item => item.id}
-            style={styles.list}
-            renderItem={({ item }) => (
-              <View style={styles.listItem}>
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemAmount}>{item.amount.toFixed(2)} {currency}</Text>
-                  <Text style={styles.itemDate}>
-                    {new Date(item.timestamp).toLocaleDateString()}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.deleteBtn}>
-                  <Text style={styles.deleteIcon}>🗑️</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            ListEmptyComponent={
-              <Text style={styles.emptyText}>
-                {lang === 'ar' ? 'لا توجد إضافات' : 'No entries yet'}
+            {/* Add New Entry Form */}
+            <View style={styles.addForm}>
+              <Text style={[styles.label, isRTL && styles.textRight]}>
+                {lang === 'ar' ? 'إضافة مبلغ جديد' : 'Add New Amount'}
               </Text>
-            }
-          />
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={[styles.input, { flex: 1, textAlign: isRTL ? 'right' : 'left' }]}
+                  placeholder="0.00"
+                  keyboardType="decimal-pad"
+                  value={amount}
+                  onChangeText={setAmount}
+                />
+              </View>
+              <TouchableOpacity style={styles.addBtn} onPress={handleAdd}>
+                <Text style={styles.addBtnText}>{lang === 'ar' ? 'إضافة' : 'Add'}</Text>
+              </TouchableOpacity>
+            </View>
 
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeBtnText}>{lang === 'ar' ? 'إغلاق' : 'Close'}</Text>
-          </TouchableOpacity>
+            {/* List of Entries */}
+            <Text style={[styles.label, { marginTop: 24, marginBottom: 12 }, isRTL && styles.textRight]}>
+              {lang === 'ar' ? 'سجل الإضافات هذا الشهر' : 'Entries this month'}
+            </Text>
+            
+            <View style={styles.list}>
+              {wealthEntries && wealthEntries.length > 0 ? (
+                wealthEntries.map((item) => (
+                  <View key={item.id} style={styles.listItem}>
+                    <View style={styles.itemInfo}>
+                      <Text style={styles.itemAmount}>{item.amount.toFixed(2)} {currency}</Text>
+                      <Text style={styles.itemDate}>
+                        {new Date(item.timestamp).toLocaleDateString()}
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.deleteBtn}>
+                      <Text style={styles.deleteIcon}>🗑️</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>
+                  {lang === 'ar' ? 'لا توجد إضافات' : 'No entries yet'}
+                </Text>
+              )}
+            </View>
+
+            <TouchableOpacity 
+              style={styles.closeBtn} 
+              onPress={() => {
+                Haptics.selectionAsync();
+                onClose();
+              }}
+            >
+              <Text style={styles.closeBtnText}>{lang === 'ar' ? 'إغلاق' : 'Close'}</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -114,76 +131,100 @@ export default function WealthDetailModal({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.6)', // Slightly lighter overlay
     justifyContent: 'center',
     padding: 20,
   },
   modalContent: {
     backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 20,
-    maxHeight: '80%',
+    borderRadius: 28, // Smoother corners
+    maxHeight: '85%',
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
+    overflow: 'hidden',
+    // Shadow for elevation
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  scrollContent: {
+    padding: 24, // Increased padding
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#1a4d2e',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   addForm: {
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 12,
+    backgroundColor: '#f8f9fa', // Lighter grey
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#eee',
   },
   label: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 10,
     color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   textRight: {
     textAlign: 'right',
   },
   inputRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 10,
+    gap: 12,
+    marginBottom: 16,
   },
   input: {
     backgroundColor: 'white',
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 18,
+    color: '#333',
+    fontWeight: '600',
   },
   addBtn: {
     backgroundColor: '#1a4d2e',
-    padding: 12,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
     alignItems: 'center',
+    shadowColor: '#1a4d2e',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   addBtnText: {
     color: 'white',
     fontWeight: 'bold',
+    fontSize: 16,
   },
   list: {
-    marginTop: 10,
+    marginTop: 0,
   },
   listItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#f0f0f0',
   },
   itemInfo: {
     flex: 1,
   },
   itemAmount: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 'bold',
     color: '#333',
   },
@@ -194,29 +235,32 @@ const styles = StyleSheet.create({
   itemDate: {
     fontSize: 12,
     color: '#999',
-    marginTop: 2,
+    marginTop: 4,
   },
   deleteBtn: {
-    padding: 8,
+    padding: 10,
+    backgroundColor: '#FFF0F0',
+    borderRadius: 8,
   },
   deleteIcon: {
-    fontSize: 18,
+    fontSize: 16,
   },
   emptyText: {
     textAlign: 'center',
-    padding: 20,
+    padding: 30,
     color: '#999',
+    fontStyle: 'italic',
   },
   closeBtn: {
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: '#eee',
-    borderRadius: 12,
+    marginTop: 30,
+    padding: 16,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 14,
     alignItems: 'center',
   },
   closeBtnText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#555',
   },
 });
