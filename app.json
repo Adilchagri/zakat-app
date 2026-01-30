@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "zakatapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.adil1011.zakatapp",
@@ -45,13 +44,10 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "ecc9c374-00ba-40d4-b815-62b266480307"
-      }
+      "router": {}
     }
   }
 }

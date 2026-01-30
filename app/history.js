@@ -1,340 +1,332 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, ScrollView, 
-  Dimensions, Animated, Alert 
+  Dimensions, Animated, Alert, Platform, BackHandler 
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useZakatData } from '../hooks/useZakatData';
+import PaymentModal from '../components/PaymentModal';
+import ProgressBar from '../components/ProgressBar';
+import PaymentListItem from '../components/PaymentListItem';
 
-const { width , height} = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
-// Month names in Arabic and English
+// Month names
 const monthNames = {
   ar: ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'],
   en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 };
 
-// Simple Bar Chart Component
-const BarChart = ({ data, maxValue, lang }) => {
-  return (
-    <View style={styles.chartContainer}>
-      <Text style={styles.chartTitle}>
-        <Text style={styles.scrollHint}>
-        ⇆ {lang === 'ar' ? 'اسحب لليسار أو اليمين لرؤية الكل' : 'Swipe left or right to see all'}
-        </Text>
+export default function History() {
+  const { 
+    data, refresh, currentMonthData, 
+    addPayment, updatePayment, deletePayment, resetMonth,
+    setCurrentDate // We need this to switch months
+  } = useZakatData();
+  
+  const [lang, setLang] = useState('ar');
+  const [viewMode, setViewMode] = useState('calendar'); // Default to calendar
+  const router = useRouter();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const currentYear = new Date().getFullYear();
 
-        {lang === 'ar' ? '📊 المدفوعات الشهرية' : '📊 Monthly Payments'}
-      </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.barsContainer}
-        >
+  // Payment Modal State
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [editingPayment, setEditingPayment] = useState(null);
 
-        {data.map((item, index) => {
-          const heightPercent = maxValue > 0 ? (item.amount / maxValue) * 100 : 0;
-          return (
-            <View key={index} style={styles.barWrapper}>
-              <View style={styles.barColumn}>
-                <View style={[styles.bar, { height: `${heightPercent}%` }]}>
-                  {item.amount > 0 && (
-                    <Text style={styles.barValue}>{item.amount.toFixed(0)}</Text>
-                  )}
-                </View>
-              </View>
-              <Text style={styles.barLabel}>{item.label}</Text>
-            </View>
-          );
-        })}
-      </ScrollView>
-    </View>
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
   );
-};
 
-// Calendar View Component
-const CalendarView = ({ payments, lang, currentYear }) => {
-  const getMonthPayments = (monthIndex) => {
-    return payments.filter(p => {
-      const date = new Date(p.timestamp);
-      return date.getMonth() === monthIndex && date.getFullYear() === currentYear;
-    });
+  useEffect(() => {
+    refresh();
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+
+    // Handle Android hardware back button
+    const backAction = () => {
+      if (viewMode === 'tracking') {
+        setViewMode('calendar');
+        return true; // prevent default
+      }
+      return false; // use default (go back)
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [viewMode, refresh]);
+
+  // --- Handlers ---
+  const handleBack = () => {
+    if (viewMode === 'tracking') {
+      setViewMode('calendar');
+    } else {
+      router.back();
+    }
   };
 
-  const getMonthTotal = (monthIndex) => {
-    const monthPayments = getMonthPayments(monthIndex);
-    return monthPayments.reduce((sum, p) => sum + p.amount, 0);
+  const handleMonthSelect = (monthIndex) => {
+    // Set the current date in the hook to the 1st of the selected month
+    const newDate = new Date(currentYear, monthIndex, 1);
+    setCurrentDate(newDate);
+    setViewMode('tracking');
   };
 
- const getMonthColor = (total) => {
-  if (total === 0) return '#4A4A4A';      // Changed!
-  if (total < 500) return '#FFF9C4';     // Changed!
-  if (total < 1000) return '#FFEB3B';    // Changed!
-  if (total < 2000) return '#FFC107';    // Changed!
-  return '#C9A961';                      // Changed!
-};
-
-  const getTextColor = (total) => {
-    if (total === 0) return '#999';
-    if (total < 2000) return '#1a4d2e';
-    return '#0a2818';
+  const handleSavePayment = async (payment) => {
+    if (editingPayment) {
+      await updatePayment(payment);
+    } else {
+      await addPayment(payment.amount, payment.date);
+    }
+    setShowPaymentModal(false);
+    setEditingPayment(null);
   };
 
-  return (
+  const handleDeletePayment = (payment) => {
+    if (Platform.OS === 'web') {
+      if (window.confirm(lang === 'ar' ? 'هل تريد حذف هذه الدفعة؟' : 'Delete this payment?')) {
+        deletePayment(payment.id);
+      }
+    } else {
+      Alert.alert(
+        lang === 'ar' ? 'تأكيد الحذف' : 'Confirm Delete',
+        lang === 'ar' ? 'هل تريد حذف هذه الدفعة؟' : 'Delete this payment?', 
+        [
+          { text: lang === 'ar' ? 'إلغاء' : 'Cancel', style: 'cancel' },
+          {
+            text: lang === 'ar' ? 'حذف' : 'Delete',
+            style: 'destructive',
+            onPress: () => deletePayment(payment.id)
+          }
+        ]
+      );
+    }
+  };
+
+  const handleResetMonth = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm(lang === 'ar' ? 'سيتم حذف جميع بيانات هذا الشهر. هل تريد المتابعة؟' : 'This will clear all month data. Continue?')) {
+        resetMonth();
+      }
+    } else {
+      Alert.alert(
+        lang === 'ar' ? 'إعادة ضبط الشهر' : 'Reset Month',
+        lang === 'ar' ? 'سيتم حذف جميع بيانات هذا الشهر.' : 'This will clear all month data.',
+        [
+          { text: lang === 'ar' ? 'إلغاء' : 'Cancel', style: 'cancel' },
+          {
+            text: lang === 'ar' ? 'تأكيد' : 'Confirm',
+            style: 'destructive',
+            onPress: () => resetMonth()
+          }
+        ]
+      );
+    }
+  };
+
+  // --- Calculations for Current Month (from Hook) ---
+  const totalDue = currentMonthData?.totalZakatDue || 0;
+  const totalPaid = currentMonthData?.payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
+  const remaining = Math.max(0, totalDue - totalPaid);
+  const progress = totalDue > 0 ? Math.min(100, (totalPaid / totalDue) * 100) : 0;
+
+  // --- Helper to get month status for calendar ---
+  const getMonthStatus = (monthIndex) => {
+    const key = `${currentYear}-${monthIndex}`;
+    const mData = data[key];
+    if (!mData) return 'empty';
+    
+    const mPaid = mData.payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
+    const mDue = mData.totalZakatDue || 0;
+
+    if (mDue > 0 && mPaid >= mDue) return 'complete';
+    if (mPaid > 0) return 'partial';
+    if (mData.totalWealth > 0) return 'started'; // Has wealth but no payment/zakat
+    return 'empty';
+  };
+
+  const getMonthColor = (status) => {
+    switch (status) {
+      case 'complete': return '#1a4d2e';
+      case 'partial': return '#C9A961';
+      case 'started': return '#FFECB3'; // Light gold
+      default: return 'rgba(255,255,255,0.1)';
+    }
+  };
+
+  const getMonthTextColor = (status) => {
+    if (status === 'complete') return '#FFF';
+    if (status === 'partial') return '#000';
+    if (status === 'started') return '#000';
+    return '#C9A961'; // Default text color
+  };
+
+  // --- Components ---
+
+  const CalendarView = () => (
     <View style={styles.calendarContainer}>
-      <Text style={styles.calendarTitle}>
+      <Text style={styles.sectionTitle}>
         {lang === 'ar' ? `🗓️ تقويم ${currentYear}` : `🗓️ ${currentYear} Calendar`}
       </Text>
       <View style={styles.calendarGrid}>
         {Array.from({ length: 12 }, (_, i) => {
-          const total = getMonthTotal(i);
-          const payments = getMonthPayments(i);
-          const bgColor = getMonthColor(total);
-          const textColor = getTextColor(total);
+          const status = getMonthStatus(i);
+          const bgColor = getMonthColor(status);
+          const textColor = getMonthTextColor(status);
+          const isCurrentMonth = new Date().getMonth() === i;
           
           return (
             <TouchableOpacity 
               key={i} 
               style={[
                 styles.calendarMonth,
-                { backgroundColor: bgColor }
+                { backgroundColor: bgColor },
+                isCurrentMonth && styles.currentMonthBorder
               ]}
-              onPress={() => {
-                if (payments.length > 0) {
-                  const details = payments.map(p => 
-                    `${new Date(p.timestamp).getDate()}/${i + 1}: ${p.amount.toFixed(2)}`
-                  ).join('\n');
-                  Alert.alert(
-                    monthNames[lang][i],
-                    `${lang === 'ar' ? 'المدفوعات' : 'Payments'}:\n${details}\n\n${lang === 'ar' ? 'المجموع' : 'Total'}: ${total.toFixed(2)}`
-                  );
-                }
-              }}
+              onPress={() => handleMonthSelect(i)}
             >
               <Text style={[styles.calendarMonthName, { color: textColor }]}>
                 {monthNames[lang][i]}
               </Text>
-              {total > 0 && (
-                <Text style={[styles.calendarMonthAmount, { color: textColor }]}>
-                  {total.toFixed(0)}
-                </Text>
-              )}
-              {payments.length > 0 && (
-                <View style={styles.paymentIndicator}>
-                  <Text style={styles.paymentCount}>{payments.length}</Text>
-                </View>
-              )}
+              {status === 'complete' && <Text style={styles.statusIcon}>✓</Text>}
             </TouchableOpacity>
           );
         })}
       </View>
+      
+      {/* Legend */}
       <View style={styles.legendContainer}>
         <View style={styles.legendItem}>
-          <View style={[styles.legendBox, { backgroundColor: '#4A4A4A'}]} />
-          <Text style={styles.legendText}>{lang === 'ar' ? 'لا شيء' : 'None'}</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendBox, { backgroundColor: '#FFF9C4'}]} />
-          <Text style={styles.legendText}>{'< 500'}</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendBox, { backgroundColor: '#FFEB3B'}]} />
-          <Text style={styles.legendText}>{'< 1K'}</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendBox, { backgroundColor: '#FFC107'}]} />
-          <Text style={styles.legendText}>{'< 2K'}</Text>
+          <View style={[styles.legendBox, { backgroundColor: '#1a4d2e'}]} />
+          <Text style={styles.legendText}>{lang === 'ar' ? 'مكتمل' : 'Complete'}</Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendBox, { backgroundColor: '#C9A961'}]} />
-          <Text style={styles.legendText}>{'2K+'}</Text>
+          <Text style={styles.legendText}>{lang === 'ar' ? 'جارٍ' : 'Partial'}</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendBox, { backgroundColor: 'rgba(255,255,255,0.1)', borderColor: '#C9A961', borderWidth: 1}]} />
+          <Text style={styles.legendText}>{lang === 'ar' ? 'فارغ' : 'Empty'}</Text>
         </View>
       </View>
     </View>
   );
-};
 
-// Statistics Cards Component
-const StatsCards = ({ tracker, lang }) => {
-  const totalPaid = tracker?.payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
-  const remaining = tracker ? Math.max(0, tracker.totalZakat - totalPaid) : 0;
-  const progress = tracker && tracker.totalZakat > 0 
-    ? (totalPaid / tracker.totalZakat) * 100 
-    : 0;
-  const avgPayment = tracker?.payments?.length > 0 
-    ? totalPaid / tracker.payments.length 
-    : 0;
-
-  const stats = [
-    {
-      icon: '💰',
-      label: lang === 'ar' ? 'إجمالي المطلوب' : 'Total Required',
-      value: tracker?.totalZakat?.toFixed(2) || '0.00',
-      color: '#1976D2'
-    },
-    {
-      icon: '✅',
-      label: lang === 'ar' ? 'المدفوع' : 'Total Paid',
-      value: totalPaid.toFixed(2),
-      color: '#1a4d2e'
-    },
-    {
-      icon: '⏳',
-      label: lang === 'ar' ? 'المتبقي' : 'Remaining',
-      value: remaining.toFixed(2),
-      color: '#C9A961'
-    },
-    {
-      icon: '📈',
-      label: lang === 'ar' ? 'متوسط الدفعة' : 'Avg Payment',
-      value: avgPayment.toFixed(2),
-      color: '#D4AF37'
-    },
-    {
-      icon: '📊',
-      label: lang === 'ar' ? 'نسبة الإنجاز' : 'Progress',
-      value: `${progress.toFixed(1)}%`,
-      color: '#2E7D32'
-    },
-    {
-      icon: '🔢',
-      label: lang === 'ar' ? 'عدد الدفعات' : 'Payments',
-      value: tracker?.payments?.length || 0,
-      color: '#F57C00'
-    }
-  ];
-
-  return (
-    <View style={styles.statsContainer}>
-      <Text style={styles.statsTitle}>
-        {lang === 'ar' ? '📈 الإحصائيات' : '📈 Statistics'}
-      </Text>
-      <View style={styles.statsGrid}>
-        {stats.map((stat, index) => (
-          <View key={index} style={[styles.statCard, { borderLeftColor: stat.color }]}>
-            <Text style={styles.statIcon}>{stat.icon}</Text>
-            <Text style={styles.statLabel}>{stat.label}</Text>
-            <Text style={[styles.statValue, { color: stat.color }]}>{stat.value}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-};
-
-// Payment Timeline Component
-const PaymentTimeline = ({ payments, lang }) => {
-  const sortedPayments = [...payments].sort((a, b) => b.timestamp - a.timestamp);
-
-  return (
-    <View style={styles.timelineContainer}>
-      <Text style={styles.timelineTitle}>
-        {lang === 'ar' ? '📅 سجل المدفوعات' : '📅 Payment Timeline'}
-      </Text>
-      {sortedPayments.length === 0 ? (
-        <View style={styles.emptyTimeline}>
-          <Text style={styles.emptyIcon}>📭</Text>
-          <Text style={styles.emptyText}>
-            {lang === 'ar' ? 'لا توجد مدفوعات مسجلة' : 'No payments recorded yet'}
+  const TrackingView = () => (
+    <View style={styles.trackingContainer}>
+      <View style={styles.trackingHeader}>
+        <TouchableOpacity onPress={() => setViewMode('calendar')} style={styles.backToCalBtn}>
+          <Text style={styles.backToCalText}>📅</Text>
+        </TouchableOpacity>
+        <View>
+          <Text style={styles.trackingTitle}>
+            {lang === 'ar' ? 'تفاصيل الشهر' : 'Month Details'}
+          </Text>
+          <Text style={styles.trackingSubtitle}>
+            {monthNames[lang][currentMonthData.month]} {currentMonthData.year}
           </Text>
         </View>
-      ) : (
-        sortedPayments.map((payment, index) => {
-          const date = new Date(payment.timestamp);
-          const isFirst = index === 0;
-          const isLast = index === sortedPayments.length - 1;
+        <View style={{width: 40}} /> 
+      </View>
+
+      {totalDue > 0 ? (
+        <View style={styles.activeTracking}>
+          <ProgressBar progress={progress} />
           
-          return (
-            <View key={payment.id} style={styles.timelineItem}>
-              <View style={styles.timelineLine}>
-                {!isFirst && <View style={styles.lineTop} />}
-                <View style={styles.timelineDot} />
-                {!isLast && <View style={styles.lineBottom} />}
-              </View>
-              <View style={styles.timelineContent}>
-                <View style={styles.timelineCard}>
-                  <View style={styles.timelineHeader}>
-                    <Text style={styles.timelineDate}>
-                      {date.getDate()} {monthNames[lang][date.getMonth()]} {date.getFullYear()}
-                    </Text>
-                    <Text style={styles.timelineAmount}>
-                      {payment.amount.toFixed(2)} {lang === 'ar' ? 'د.م.' : 'MAD'}
-                    </Text>
-                  </View>
-                  <View style={styles.timelineFooter}>
-                    <Text style={styles.timelineTime}>
-                      ⏰ {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                  </View>
-                </View>
-              </View>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>{lang === 'ar' ? 'المطلوب' : 'Due'}</Text>
+              <Text style={styles.statValue}>{totalDue.toFixed(2)}</Text>
             </View>
-          );
-        })
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>{lang === 'ar' ? 'المدفوع' : 'Paid'}</Text>
+              <Text style={[styles.statValue, { color: '#1a4d2e' }]}>{totalPaid.toFixed(2)}</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>{lang === 'ar' ? 'المتبقي' : 'Remaining'}</Text>
+              <Text style={[styles.statValue, { color: '#C9A961' }]}>{remaining.toFixed(2)}</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity 
+            style={styles.addPaymentBtn}
+            onPress={() => {
+              setEditingPayment(null);
+              setShowPaymentModal(true);
+            }}
+          >
+            <Text style={styles.addPaymentText}>
+              {lang === 'ar' ? '➕ إضافة دفعة' : '➕ Add Payment'}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.paymentsList}>
+            <Text style={styles.listTitle}>
+              {lang === 'ar' ? 'سجل المدفوعات' : 'Payment History'}
+            </Text>
+            {currentMonthData.payments && currentMonthData.payments.length > 0 ? (
+              currentMonthData.payments.map((p) => (
+                <PaymentListItem
+                  key={p.id}
+                  payment={p}
+                  onEdit={(item) => {
+                    setEditingPayment(item);
+                    setShowPaymentModal(true);
+                  }}
+                  onDelete={handleDeletePayment}
+                  lang={lang}
+                />
+              ))
+            ) : (
+              <Text style={styles.emptyListText}>
+                {lang === 'ar' ? 'لا توجد مدفوعات بعد' : 'No payments yet'}
+              </Text>
+            )}
+          </View>
+
+          <TouchableOpacity onPress={handleResetMonth} style={styles.resetLink}>
+            <Text style={styles.resetLinkText}>
+              {lang === 'ar' ? 'إعادة ضبط الشهر' : 'Reset Month'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.emptyTracking}>
+          <Text style={styles.emptyIcon}>💰</Text>
+          <Text style={styles.emptyTitle}>
+            {lang === 'ar' ? 'لا توجد زكاة مستحقة' : 'No Zakat Due'}
+          </Text>
+          <Text style={styles.emptySub}>
+            {lang === 'ar' 
+              ? 'الرجاء العودة للصفحة الرئيسية وإضافة الأموال لهذا الشهر لحساب الزكاة' 
+              : 'Please return to home page and add funds for this month to calculate Zakat'}
+          </Text>
+        </View>
       )}
     </View>
   );
-};
-
-export default function History() {
-  const [tracker, setTracker] = useState(null);
-  const [lang, setLang] = useState('ar');
-  const [viewMode, setViewMode] = useState('stats');
-  const router = useRouter();
-  const fadeAnim = new Animated.Value(0);
-
-  useEffect(() => {
-    loadData();
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 600,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      const saved = await AsyncStorage.getItem('zakat_tracker');
-      if (saved) {
-        setTracker(JSON.parse(saved));
-      }
-    } catch (error) {
-      console.log('Error loading tracker:', error);
-    }
-  };
-
-  const getChartData = () => {
-    if (!tracker?.payments) return [];
-    
-    const monthlyData = Array(12).fill(0).map((_, i) => ({
-      month: i,
-      amount: 0,
-      label: monthNames[lang][i]
-    }));
-
-    tracker.payments.forEach(payment => {
-      const month = new Date(payment.timestamp).getMonth();
-      monthlyData[month].amount += payment.amount;
-    });
-
-    return monthlyData;
-  };
-
-  const chartData = getChartData();
-  const maxValue = Math.max(...chartData.map(d => d.amount), 100);
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={styles.titleContainer}>
           <Text style={styles.title}>
-            {lang === 'ar' ? '📜 سجل الزكاة' : '📜 Zakat History'}
-          </Text>
-          <Text style={styles.subtitle}>
-            {tracker?.year || new Date().getFullYear()}
+            {lang === 'ar' ? 'التتبع والإحصائيات' : 'Tracking & Stats'}
           </Text>
         </View>
         <TouchableOpacity 
@@ -345,460 +337,120 @@ export default function History() {
         </TouchableOpacity>
       </View>
 
-      {/* View Mode Selector */}
-      <View style={styles.viewSelector}>
-        <TouchableOpacity 
-          style={[styles.viewBtn, viewMode === 'stats' && styles.viewBtnActive]}
-          onPress={() => setViewMode('stats')}
-        >
-          <Text style={styles.viewBtnText}>📈</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.viewBtn, viewMode === 'chart' && styles.viewBtnActive]}
-          onPress={() => setViewMode('chart')}
-        >
-          <Text style={styles.viewBtnText}>📊</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.viewBtn, viewMode === 'calendar' && styles.viewBtnActive]}
-          onPress={() => setViewMode('calendar')}
-        >
-          <Text style={styles.viewBtnText}>🗓️</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.viewBtn, viewMode === 'timeline' && styles.viewBtnActive]}
-          onPress={() => setViewMode('timeline')}
-        >
-          <Text style={styles.viewBtnText}>📅</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Content */}
-      <ScrollView 
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <Animated.View style={{}}>
-          {!tracker ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>📭</Text>
-              <Text style={styles.emptyText}>
-                {lang === 'ar' ? 'لا توجد بيانات للزكاة بعد' : 'No Zakat data yet'}
-              </Text>
-              <Text style={styles.emptySubtext}>
-                {lang === 'ar' 
-                  ? 'قم بحساب زكاتك في الصفحة الرئيسية للبدء' 
-                  : 'Calculate your Zakat on the main page to start'}
-              </Text>
-            </View>
-          ) : (
-            <>
-              {viewMode === 'stats' && <StatsCards tracker={tracker} lang={lang} />}
-              {viewMode === 'chart' && <BarChart data={chartData} maxValue={maxValue} lang={lang} />}
-              {viewMode === 'calendar' && (
-                <CalendarView 
-                  payments={tracker.payments || []} 
-                  lang={lang}
-                  currentYear={tracker.year || new Date().getFullYear()}
-                />
-              )}
-              {viewMode === 'timeline' && <PaymentTimeline payments={tracker.payments || []} lang={lang} />}
-            </>
-          )}
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <Animated.View style={{ opacity: fadeAnim }}>
+          {viewMode === 'calendar' ? <CalendarView /> : <TrackingView />}
         </Animated.View>
       </ScrollView>
+
+      <PaymentModal 
+        visible={showPaymentModal}
+        onClose={() => {
+          setShowPaymentModal(false);
+          setEditingPayment(null);
+        }}
+        onSave={handleSavePayment}
+        lang={lang}
+        editingPayment={editingPayment}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a2818',
+  container: { flex: 1, backgroundColor: '#0a2818' },
+  header: { 
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', 
+    paddingHorizontal: 16, paddingTop: 50, paddingBottom: 16, 
+    backgroundColor: 'rgba(201, 169, 97, 0.1)', 
+    borderBottomWidth: 2, borderBottomColor: '#C9A961' 
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 16,
-    backgroundColor: 'rgba(201, 169, 97, 0.1)',
-    borderBottomWidth: 2,
-    borderBottomColor: '#C9A961',
+  backBtn: { 
+    width: 40, height: 40, borderRadius: 20, 
+    backgroundColor: 'rgba(201, 169, 97, 0.2)', 
+    justifyContent: 'center', alignItems: 'center' 
   },
-  backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(201, 169, 97, 0.2)',
-    borderWidth: 2,
-    borderColor: '#C9A961',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backIcon: {
-    fontSize: 24,
-    color: '#C9A961',
-  },
-  titleContainer: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#C9A961',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#E8D7B5',
-    marginTop: 4,
-  },
-  langBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(201, 169, 97, 0.2)',
-    borderWidth: 2,
-    borderColor: '#C9A961',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  langText: {
-    color: '#C9A961',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  viewSelector: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 10,
-  },
-  viewBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(201, 169, 97, 0.2)',
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  viewBtnActive: {
-    backgroundColor: '#C9A961',
-    borderColor: '#D4AF37',
-  },
-  viewBtnText: {
-    fontSize: 24,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyIcon: {
-    fontSize: 80,
-    marginBottom: 20,
-  },
-  emptyText: {
-    fontSize: 18,
-    color: '#E8D7B5',
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#C9A961',
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
+  backIcon: { fontSize: 24, color: '#C9A961' },
+  title: { fontSize: 20, fontWeight: 'bold', color: '#C9A961' },
+  langBtn: { padding: 8 },
+  langText: { color: '#C9A961', fontWeight: 'bold' },
+  content: { flex: 1, padding: 16 },
 
-  // Stats Cards - MATCHING MAIN APP PALETTE
-  statsContainer: {
-    marginBottom: 20,
-  },
-  statsTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#C9A961',
-    marginBottom: 16,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  statCard: {
-    width: (width - 44) / 2,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    borderLeftWidth: 4,
-    shadowColor: '#C9A961',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  statIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: '#666',
-    marginBottom: 6,
-    fontWeight: '600',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-
-  // Chart - MATCHING MAIN APP PALETTE
-  chartContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(201, 169, 97, 0.3)',
-    shadowColor: '#C9A961',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  chartTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1a4d2e',
-    marginBottom: 20,
-  },
-  barsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height : height * 0.28,
-    paddingHorizontal: 4,
-  },
-  barWrapper: {
-    width: 42,
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: 6,
-  },
-  barColumn: {
-    width: '100%',
-    height: height * 0.24,
-    justifyContent: 'flex-end',
-  },
-  bar: {
-    width: '100%',
-    backgroundColor: '#C9A961',
-    borderTopLeftRadius: 6,
-    borderTopRightRadius: 6,
-    minHeight: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  barValue: {
-    fontSize: 8,
-    color: '#0a2818',
-    fontWeight: 'bold',
-  },
-  barLabel: {
-    fontSize: 9,
-    color: '#333',
-    marginTop: 6,
-    fontWeight: '600',
-  },
-
-  // Calendar - MATCHING MAIN APP PALETTE
+  // Calendar Styles
   calendarContainer: {
-    backgroundColor:'#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#C9A961',
-    shadowColor: '#C9A961',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: '#C9A961'
   },
-  calendarTitle: {
-    fontSize: 19,
-    fontWeight: 'bold',
-    color: '#1a4d2e',
-    marginBottom: 16,
+  sectionTitle: {
+    fontSize: 18, fontWeight: 'bold', color: '#C9A961', marginBottom: 16, textAlign: 'center'
   },
   calendarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',  // Better spacing!
-    gap: 8,
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center'
   },
   calendarMonth: {
-    width: '22%',
-    aspectRatio: 1,
-    borderRadius: 12,
-    padding: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: 'rgba(201, 169, 97, 0.3)',
+    width: '30%', aspectRatio: 1, borderRadius: 12,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(201, 169, 97, 0.3)',
+    marginBottom: 8
+  },
+  currentMonthBorder: {
+    borderWidth: 2, borderColor: '#FFF',
   },
   calendarMonthName: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 4,
+    fontSize: 14, fontWeight: 'bold'
   },
-  calendarMonthAmount: {
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  paymentIndicator: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: '#FF5252',
-    borderRadius: 8,
-    width: 16,
-    height: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  paymentCount: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    fontWeight: 'bold',
+  statusIcon: {
+    fontSize: 12, color: '#FFF', marginTop: 4
   },
   legendContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 16, justifyContent: 'center'
   },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  legendBox: {
-    width: 16,
-    height: 16,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#999',
-  },
-  legendText: {
-    fontSize: 11,
-    color: '#666',
-  },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendBox: { width: 12, height: 12, borderRadius: 3 },
+  legendText: { fontSize: 12, color: '#E8D7B5' },
 
-  // Timeline - MATCHING MAIN APP PALETTE
-  timelineContainer: {
-    marginBottom: 20,
+  // Tracking Styles
+  trackingContainer: {
+    backgroundColor: '#fff', borderRadius: 16, padding: 20,
+    borderLeftWidth: 5, borderLeftColor: '#1a4d2e',
+    marginBottom: 20
   },
-  timelineTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#C9A961',
-    marginBottom: 16,
+  trackingHeader: { 
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 
   },
-  emptyTimeline: {
-    backgroundColor: '#FFFFFF', 
-    borderRadius: 16,
-    padding: 40,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(201, 169, 97, 0.3)',
+  backToCalBtn: {
+    padding: 8, backgroundColor: '#f0f0f0', borderRadius: 8
   },
-  timelineItem: {
-    flexDirection: 'row',
-    marginBottom: 16,
+  backToCalText: { fontSize: 20 },
+  trackingTitle: { fontSize: 18, fontWeight: 'bold', color: '#1a4d2e', textAlign: 'center' },
+  trackingSubtitle: { fontSize: 14, color: '#666', marginTop: 4, textAlign: 'center' },
+  
+  statsRow: { 
+    flexDirection: 'row', justifyContent: 'space-between', 
+    backgroundColor: '#f9f9f9', padding: 12, borderRadius: 12, marginBottom: 20 
   },
-  timelineLine: {
-    width: 40,
-    alignItems: 'center',
-  },
-  lineTop: {
-    width: 2,
-    flex: 1,
-    backgroundColor: '#C9A961',
-  },
-  timelineDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#C9A961',
-    borderWidth: 3,
-    borderColor: '#D4AF37',
-  },
-  lineBottom: {
-    width: 2,
-    flex: 1,
-    backgroundColor: '#C9A961',
-  },
-  timelineContent: {
-    flex: 1,
-  },
-  timelineCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 14,
-    borderLeftWidth: 4,
-    borderLeftColor: '#C9A961',
-    borderWidth: 1,
-    borderColor: '#C9A961',
-    shadowColor: '#C9A961',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  timelineHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  timelineDate: {
-    fontSize: 13,
-    color: '#666',
-    fontWeight: '600',
-  },
-  timelineAmount: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1a4d2e',
-  },
-  timelineFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  timelineTime: {
-    fontSize: 11,
-    color: '#999',
-  },
+  statItem: { alignItems: 'center', flex: 1 },
+  statLabel: { fontSize: 12, color: '#666', marginBottom: 4 },
+  statValue: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  statDivider: { width: 1, backgroundColor: '#ddd' },
 
+  addPaymentBtn: {
+    backgroundColor: '#1a4d2e', paddingVertical: 14, borderRadius: 12,
+    alignItems: 'center', marginBottom: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2, shadowRadius: 4, elevation: 4
+  },
+  addPaymentText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 
-  scrollHint: {
-  fontSize: 11,
-  color: '#999',
-  textAlign: 'center',
-  marginBottom: 6,
-  fontStyle: 'italic',
-},
+  listTitle: { fontSize: 14, fontWeight: 'bold', color: '#1a4d2e', marginBottom: 10 },
+  emptyListText: { textAlign: 'center', color: '#999', fontStyle: 'italic', padding: 10 },
 
+  resetLink: { marginTop: 20, alignItems: 'center' },
+  resetLinkText: { color: '#FF5252', fontSize: 12 },
+
+  // Empty State
+  emptyTracking: { alignItems: 'center', padding: 20 },
+  emptyIcon: { fontSize: 50, marginBottom: 10 },
+  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  emptySub: { textAlign: 'center', color: '#666', marginTop: 8 },
 });

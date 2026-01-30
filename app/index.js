@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator, 
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  StyleSheet, Text, View, TextInput, TouchableOpacity, ActivityIndicator,
   Alert, Animated, Dimensions, StatusBar, Modal,
   KeyboardAvoidingView, ScrollView, Platform, FlatList
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import AppGuide from '../components/AppGuide';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useZakatData } from '../hooks/useZakatData';
+import WealthDetailModal from '../components/WealthDetailModal';
 
 // --- CONFIGURATION ---
-const NISAB_GRAMS = 85; 
-const ZAKAT_RATE = 0.025; 
+const NISAB_GRAMS = 85;
+const ZAKAT_RATE = 0.025;
 const NISAB_SILVER_GRAMS = 595;
 const FALLBACK_USD_MAD = 10.10;
 
@@ -196,7 +198,7 @@ const content = {
     localPriceGold: "Gold/Gram",
     localPriceSilver: "Silver/Gram",
     refresh: "Update",
-    wealthLabel: "Your Wealth",
+    wealthLabel: "Total Wealth",
     wealthPlaceholder: "Amount in MAD...",
     calculateBtn: "Calculate Zakat",
     resultDue: "Zakat Due",
@@ -215,8 +217,8 @@ const content = {
     both: "Both",
     recommended: "(Recommended)",
     // New tracking translations
-    progress: "Progress",
-    totalPaid: "Total Paid",
+    progress: "Monthly Progress",
+    totalPaid: "Paid",
     remaining: "Remaining",
     addPayment: "Add Payment",
     editPayment: "Edit Payment",
@@ -224,17 +226,20 @@ const content = {
     paymentDate: "Date",
     savePayment: "Save Payment",
     deletePayment: "Delete",
-    noPayments: "No payments recorded yet",
-    paymentHistory: "Payment History",
-    resetYear: "Reset Year",
-    confirmReset: "Reset Zakat Year?",
-    confirmResetMsg: "This will delete all payment records. Continue?",
+    noPayments: "No payments this month",
+    paymentHistory: "This Month's Payments",
+    resetYear: "Reset Month",
+    confirmReset: "Reset Month?",
+    confirmResetMsg: "This will clear this month's data. Continue?",
     cancel: "Cancel",
     confirm: "Confirm",
     monthlyBreakdown: "Monthly Breakdown",
-    setNewZakat: "Set Annual Zakat",
-    currentYear: "Current Year",
-    updateZakat: "Update Zakat Amount"
+    setNewZakat: "Start Tracking",
+    currentYear: "Current Month",
+    updateZakat: "Update Zakat",
+    wealthDetails: "Wealth Details",
+    manageWealth: "Manage Wealth",
+    addFunds: "Add Funds"
   },
   ar: {
     title: "الزكاة",
@@ -245,7 +250,7 @@ const content = {
     localPriceGold: "الذهب/جرام",
     localPriceSilver: "الفضة/جرام",
     refresh: "تحديث",
-    wealthLabel: "مالك",
+    wealthLabel: "إجمالي المال",
     wealthPlaceholder: "المبلغ بالدرهم...",
     calculateBtn: "احسب الزكاة",
     resultDue: "تجب الزكاة",
@@ -264,7 +269,7 @@ const content = {
     both: "كلاهما",
     recommended: "(موصى به)",
     // New tracking translations
-    progress: "التقدم",
+    progress: "التقدم الشهري",
     totalPaid: "المدفوع",
     remaining: "المتبقي",
     addPayment: "إضافة دفعة",
@@ -273,17 +278,20 @@ const content = {
     paymentDate: "التاريخ",
     savePayment: "حفظ",
     deletePayment: "حذف",
-    noPayments: "لا توجد مدفوعات مسجلة",
-    paymentHistory: "سجل المدفوعات",
-    resetYear: "إعادة تعيين السنة",
-    confirmReset: "إعادة تعيين سنة الزكاة؟",
-    confirmResetMsg: "سيتم حذف جميع سجلات الدفع. هل تريد المتابعة؟",
+    noPayments: "لا توجد مدفوعات هذا الشهر",
+    paymentHistory: "مدفوعات الشهر",
+    resetYear: "إعادة ضبط الشهر",
+    confirmReset: "إعادة ضبط الشهر؟",
+    confirmResetMsg: "سيتم حذف بيانات هذا الشهر. هل تريد المتابعة؟",
     cancel: "إلغاء",
     confirm: "تأكيد",
     monthlyBreakdown: "التفصيل الشهري",
-    setNewZakat: "تحديد زكاة السنة",
-    currentYear: "السنة الحالية",
-    updateZakat: "تحديث مبلغ الزكاة"
+    setNewZakat: "بدء التتبع",
+    currentYear: "الشهر الحالي",
+    updateZakat: "تحديث الزكاة",
+    wealthDetails: "تفاصيل الأموال",
+    manageWealth: "إدارة الأموال",
+    addFunds: "إضافة مال"
   }
 };
 
@@ -329,7 +337,7 @@ const SplashScreen = ({ onFinish }) => {
       <View style={styles.splashBg}>
         <View style={styles.splashPattern} />
       </View>
-      
+
       <Animated.View style={[
         styles.splashIconContainer,
         {
@@ -342,7 +350,7 @@ const SplashScreen = ({ onFinish }) => {
         </View>
         <View style={styles.splashGlow} />
       </Animated.View>
-      
+
       <Animated.Text style={[styles.splashTitle, { opacity: fadeAnim }]}>
         Zakat Tracker
       </Animated.Text>
@@ -375,7 +383,7 @@ const IslamicQuoteSlider = ({ lang }) => {
       ]).start(() => {
         setCurrentIndex((prev) => (prev + 1) % islamicQuotes.length);
         slideAnim.setValue(20);
-        
+
         Animated.parallel([
           Animated.timing(fadeAnim, {
             toValue: 1,
@@ -428,15 +436,15 @@ const IslamicQuoteSlider = ({ lang }) => {
           ))}
         </View>
       </View>
-      
+
       <Text style={[styles.quoteTextAr, isRTL && styles.textRight]}>
         {quote.ar}
       </Text>
-      
+
       <Text style={[styles.quoteTextEn, isRTL && styles.textRight]}>
         {lang === 'ar' ? quote.ar : quote.en}
       </Text>
-      
+
       <Text style={styles.quoteReference}>
         {lang === 'ar' ? quote.reference : quote.refEn}
       </Text>
@@ -448,7 +456,7 @@ const IslamicQuoteSlider = ({ lang }) => {
 const AboutModal = ({ visible, onClose, lang }) => {
   const t = content[lang];
   const isRTL = lang === 'ar';
-  
+
   return (
     <Modal
       animationType="fade"
@@ -463,28 +471,28 @@ const AboutModal = ({ visible, onClose, lang }) => {
             <Text style={styles.modalTitle}>Zakat Tracker</Text>
             <Text style={styles.modalSubtitle}>متتبع الزكاة</Text>
           </View>
-          
+
           <View style={styles.modalBody}>
             <Text style={[styles.devLabel, isRTL && styles.textRight]}>
               {t.developedBy}
             </Text>
-            
+
             <View style={styles.devCard}>
               <Text style={styles.devName}>👨‍💻 Adil Chagri</Text>
             </View>
-            
+
             <View style={styles.devCard}>
               <Text style={styles.devName}>👨‍💻 Chouaib Jbel</Text>
             </View>
-            
+
             <View style={styles.devCard}>
               <Text style={styles.devName}>👨‍💻 Amine Bazaoui</Text>
             </View>
-            
+
             <Text style={styles.versionText}>Version 2.0.0</Text>
             <Text style={styles.yearText}>© 2026</Text>
           </View>
-          
+
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
             <Text style={styles.closeButtonText}>{t.close}</Text>
           </TouchableOpacity>
@@ -494,7 +502,7 @@ const AboutModal = ({ visible, onClose, lang }) => {
   );
 };
 
-// ===== NEW: PAYMENT MODAL COMPONENT =====
+// ===== PAYMENT MODAL COMPONENT =====
 const PaymentModal = ({ visible, onClose, onSave, lang, editingPayment }) => {
   const t = content[lang];
   const isRTL = lang === 'ar';
@@ -573,15 +581,15 @@ const PaymentModal = ({ visible, onClose, onSave, lang, editingPayment }) => {
           </View>
 
           <View style={styles.modalActions}>
-            <TouchableOpacity 
-              style={[styles.modalButton, styles.cancelButton]} 
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton]}
               onPress={onClose}
             >
               <Text style={styles.cancelButtonText}>{t.cancel}</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.modalButton, styles.saveButton]} 
+            <TouchableOpacity
+              style={[styles.modalButton, styles.saveButton]}
               onPress={handleSave}
             >
               <Text style={styles.saveButtonText}>{t.savePayment}</Text>
@@ -593,7 +601,7 @@ const PaymentModal = ({ visible, onClose, onSave, lang, editingPayment }) => {
   );
 };
 
-// ===== NEW: PROGRESS BAR COMPONENT =====
+// ===== PROGRESS BAR COMPONENT =====
 const ProgressBar = ({ progress, lang }) => {
   const animatedWidth = useRef(new Animated.Value(0)).current;
 
@@ -620,11 +628,11 @@ const ProgressBar = ({ progress, lang }) => {
   );
 };
 
-// ===== NEW: PAYMENT LIST ITEM =====
+// ===== PAYMENT LIST ITEM =====
 const PaymentListItem = ({ payment, onEdit, onDelete, lang }) => {
   const t = content[lang];
   const date = new Date(payment.timestamp);
-  const monthNames = lang === 'ar' 
+  const monthNames = lang === 'ar'
     ? ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
     : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -654,7 +662,7 @@ export default function App() {
   const router = useRouter();
   const [showSplash, setShowSplash] = useState(true);
   const [showAbout, setShowAbout] = useState(false);
-  const [lang, setLang] = useState('ar'); 
+  const [lang, setLang] = useState('ar');
   const [showGuide, setShowGuide] = useState(false);
 
   // Prices
@@ -664,105 +672,78 @@ export default function App() {
   const [rateSource, setRateSource] = useState('');
   const [localPriceGoldGram, setLocalPriceGoldGram] = useState(null);
   const [localPriceSilverGram, setLocalPriceSilverGram] = useState(null);
-  
+
   const [nisabType, setNisabType] = useState('silver');
-  const [userWealth, setUserWealth] = useState('');
   const [loading, setLoading] = useState(true);
   const [zakatResult, setZakatResult] = useState(null);
-  
-  // ===== NEW: TRACKING STATE =====
-  const [zakatTracker, setZakatTracker] = useState(null);
+
+  // ===== NEW: TRACKING STATE & HOOK =====
+  const {
+    currentMonthData,
+    addWealthEntry,
+    deleteWealthEntry,
+    addPayment,
+    updatePayment,
+    deletePayment,
+    updateZakatDue,
+    resetMonth,
+    refresh // Get refresh function
+  } = useZakatData();
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
-  
+  const [showWealthModal, setShowWealthModal] = useState(false);
+
   const fadeAnim = new Animated.Value(0);
   const t = content[lang];
   const isRTL = lang === 'ar';
 
-  // ===== LOAD ZAKAT TRACKER FROM STORAGE =====
-  const loadZakatTracker = async () => {
-    try {
-      const saved = await AsyncStorage.getItem('zakat_tracker');
-      if (saved) {
-        const tracker = JSON.parse(saved);
-        setZakatTracker(tracker);
-      }
-    } catch (error) {
-      console.log('Error loading tracker:', error);
-    }
-  };
+  // ===== TRACKING HANDLERS =====
 
-  // ===== SAVE ZAKAT TRACKER TO STORAGE =====
-  const saveZakatTracker = async (tracker) => {
-    try {
-      await AsyncStorage.setItem('zakat_tracker', JSON.stringify(tracker));
-      setZakatTracker(tracker);
-    } catch (error) {
-      console.log('Error saving tracker:', error);
-    }
-  };
-
-  // ===== SET NEW ZAKAT YEAR =====
-  const setNewZakatYear = (totalZakat) => {
-    const newTracker = {
-      totalZakat: parseFloat(totalZakat),
-      payments: [],
-      year: new Date().getFullYear(),
-      createdAt: Date.now(),
-    };
-    saveZakatTracker(newTracker);
-  };
-
-  // ===== ADD/EDIT PAYMENT =====
-  const handleSavePayment = (payment) => {
-    if (!zakatTracker) return;
-
-    let updatedPayments;
+  const handleSavePayment = async (payment) => {
     if (editingPayment) {
-      // Edit existing
-      updatedPayments = zakatTracker.payments.map(p => 
-        p.id === editingPayment.id ? payment : p
-      );
+      await updatePayment(payment);
     } else {
-      // Add new
-      updatedPayments = [...zakatTracker.payments, payment];
+      await addPayment(payment.amount, payment.date);
     }
-
-    const updatedTracker = {
-      ...zakatTracker,
-      payments: updatedPayments
-    };
-
-    saveZakatTracker(updatedTracker);
     setShowPaymentModal(false);
     setEditingPayment(null);
   };
 
-  // ===== DELETE PAYMENT =====
   const handleDeletePayment = (payment) => {
     Alert.alert(
       lang === 'ar' ? 'تأكيد الحذف' : 'Confirm Delete',
-      lang === 'ar' ? 'هل تريد حذف هذه الدفعة؟' : 'Delete this payment?',
+      lang === 'ar'
+        ? 'هل تريد حذف هذه الدفعة؟'
+        : 'Do you want to delete this payment?',
       [
         { text: t.cancel, style: 'cancel' },
         {
           text: t.deletePayment,
           style: 'destructive',
-          onPress: () => {
-            const updatedPayments = zakatTracker.payments.filter(p => p.id !== payment.id);
-            const updatedTracker = {
-              ...zakatTracker,
-              payments: updatedPayments
-            };
-            saveZakatTracker(updatedTracker);
-          }
+          onPress: () => deletePayment(payment.id)
         }
       ]
     );
   };
 
-  // ===== RESET YEAR =====
-  const handleResetYear = () => {
+  const handleAddWealth = async (amount, description) => {
+    await addWealthEntry(amount, description);
+    // Recalculate will be triggered by effect
+  };
+
+  const handleDeleteWealth = async (id) => {
+    await deleteWealthEntry(id);
+  };
+
+  const handleResetMonth = () => {
+    console.log('Reset button clicked!');
     Alert.alert(
       t.confirmReset,
       t.confirmResetMsg,
@@ -772,8 +753,7 @@ export default function App() {
           text: t.confirm,
           style: 'destructive',
           onPress: async () => {
-            await AsyncStorage.removeItem('zakat_tracker');
-            setZakatTracker(null);
+            await resetMonth();
             setZakatResult(null);
           }
         }
@@ -783,23 +763,26 @@ export default function App() {
 
   // Calculate total paid and remaining
   const getTotalPaid = () => {
-    if (!zakatTracker) return 0;
-    return zakatTracker.payments.reduce((sum, p) => sum + p.amount, 0);
+    if (!currentMonthData) return 0;
+    return currentMonthData.payments.reduce((sum, p) => sum + p.amount, 0);
   };
 
   const getRemaining = () => {
-    if (!zakatTracker) return 0;
-    return Math.max(0, zakatTracker.totalZakat - getTotalPaid());
+    if (!currentMonthData || !currentMonthData.totalZakatDue) return 0;
+    return Math.max(0, currentMonthData.totalZakatDue - getTotalPaid());
   };
 
   const getProgress = () => {
-    if (!zakatTracker || zakatTracker.totalZakat === 0) return 0;
-    return Math.min(100, (getTotalPaid() / zakatTracker.totalZakat) * 100);
+    if (!currentMonthData || !currentMonthData.totalZakatDue) return 0;
+    return Math.min(100, (getTotalPaid() / currentMonthData.totalZakatDue) * 100);
   };
 
-  // Backend functions (unchanged)
+
+  // ===== API FUNCTIONS (RESTORED) =====
+
   const fetchBankAlMaghribRate = async () => {
     try {
+      // This often fails or requires paid key, keeping as try/catch placeholder structure from original
       throw new Error('Try official forex sources');
     } catch (error) {
       try {
@@ -853,10 +836,10 @@ export default function App() {
     try {
       const bamResult = await fetchBankAlMaghribRate();
       if (bamResult) return bamResult;
-      
+
       const forexResult = await fetchForexRate();
       if (forexResult) return forexResult;
-      
+
       return { rate: FALLBACK_USD_MAD, source: 'Forex' };
     } catch (error) {
       return { rate: FALLBACK_USD_MAD, source: 'Forex' };
@@ -914,7 +897,7 @@ export default function App() {
 
       setGoldPriceUSD(goldPrice);
       setSilverPriceUSD(silverPrice);
-      
+
       if (rateSource !== 'Manual') {
         setExchangeRate(rateData.rate.toFixed(4));
         setRateSource(rateData.source);
@@ -922,12 +905,12 @@ export default function App() {
       } else {
         updateLocalPrices(goldPrice, silverPrice, parseFloat(exchangeRate));
       }
-      
+
       animateIn();
     } catch (error) {
       Alert.alert(
         lang === 'ar' ? 'خطأ' : 'Error',
-        lang === 'ar' 
+        lang === 'ar'
           ? 'حدث خطأ في جلب الأسعار'
           : 'Error fetching prices'
       );
@@ -976,30 +959,23 @@ export default function App() {
     if (!showSplash) {
       fetchAllPrices();
       checkFirstLaunch();
-      loadZakatTracker();
     }
   }, [showSplash]);
 
+  // Recalculate Zakat when Wealth changes or Prices change
+  useEffect(() => {
+    if (localPriceGoldGram && localPriceSilverGram && currentMonthData.totalWealth >= 0) {
+      calculateZakat();
+    }
+  }, [currentMonthData.totalWealth, localPriceGoldGram, localPriceSilverGram, nisabType]);
+
   const calculateZakat = () => {
-    const wealth = parseFloat(userWealth);
+    const wealth = currentMonthData.totalWealth;
     const goldPrice = parseFloat(localPriceGoldGram);
     const silverPrice = parseFloat(localPriceSilverGram);
 
-    if (isNaN(wealth) || wealth <= 0) {
-      Alert.alert(
-        lang === 'ar' ? 'خطأ' : 'Error',
-        lang === 'ar' ? 'الرجاء إدخال مبلغ صحيح' : 'Please enter a valid amount'
-      );
-      return;
-    }
-
-    if (isNaN(goldPrice) || isNaN(silverPrice)) {
-      Alert.alert(
-        lang === 'ar' ? 'خطأ' : 'Error',
-        lang === 'ar' ? 'الرجاء تحديث الأسعار' : 'Please update prices'
-      );
-      return;
-    }
+    // If prices aren't loaded yet, don't run calc
+    if (isNaN(goldPrice) || isNaN(silverPrice)) return;
 
     let nisabValue;
     let nisabUsed;
@@ -1014,32 +990,25 @@ export default function App() {
       const goldNisab = goldPrice * NISAB_GRAMS;
       const silverNisab = silverPrice * NISAB_SILVER_GRAMS;
       nisabValue = Math.min(goldNisab, silverNisab);
-      nisabUsed = silverNisab < goldNisab 
-        ? `${t.silver} (595g)` 
+      nisabUsed = silverNisab < goldNisab
+        ? `${t.silver} (595g)`
         : `${t.gold} (85g)`;
     }
 
-    if (wealth >= nisabValue) {
-      const zakatAmount = (wealth * ZAKAT_RATE).toFixed(2);
-      setZakatResult({
-        payable: true,
-        amount: zakatAmount,
-        nisab: nisabValue.toFixed(2),
-        nisabUsed,
-      });
+    const payable = wealth >= nisabValue;
+    const amountDue = payable ? (wealth * ZAKAT_RATE).toFixed(2) : 0;
+    const diff = payable ? 0 : (nisabValue - wealth).toFixed(2);
 
-      // Auto-create tracker if it doesn't exist
-      if (!zakatTracker) {
-        setNewZakatYear(zakatAmount);
-      }
-    } else {
-      setZakatResult({
-        payable: false,
-        nisab: nisabValue.toFixed(2),
-        diff: (nisabValue - wealth).toFixed(2),
-        nisabUsed,
-      });
-    }
+    setZakatResult({
+      payable,
+      amount: amountDue,
+      nisab: nisabValue.toFixed(2),
+      nisabUsed,
+      diff
+    });
+
+    // Update the Hook's Zakat Due state
+    updateZakatDue(nisabValue, nisabType);
   };
 
   const getSourceBadge = () => {
@@ -1079,7 +1048,8 @@ export default function App() {
           </View>
 
           <AboutModal visible={showAbout} onClose={() => setShowAbout(false)} lang={lang} />
-          <PaymentModal 
+
+          <PaymentModal
             visible={showPaymentModal}
             onClose={() => {
               setShowPaymentModal(false);
@@ -1090,8 +1060,18 @@ export default function App() {
             editingPayment={editingPayment}
           />
 
+          <WealthDetailModal
+            visible={showWealthModal}
+            onClose={() => setShowWealthModal(false)}
+            wealthEntries={currentMonthData.wealthEntries}
+            onAdd={handleAddWealth}
+            onDelete={handleDeleteWealth}
+            lang={lang}
+            currency={t.currency}
+          />
+
           <View style={styles.mainContent}>
-          
+
             {/* Header */}
             <View style={styles.header}>
               <View style={styles.titleContainer}>
@@ -1101,31 +1081,31 @@ export default function App() {
                   <Text style={styles.subtitle}>{t.subtitle}</Text>
                 </View>
               </View>
-              
+
               <View style={styles.headerButtons}>
-                <TouchableOpacity 
-                  onPress={() => setShowGuide(true)} 
+                <TouchableOpacity
+                  onPress={() => setShowGuide(true)}
                   style={styles.aboutBtn}
                 >
                   <Text style={styles.aboutText}>🎓</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity 
-                  onPress={() => router.push('/history')} 
+                <TouchableOpacity
+                  onPress={() => router.push('/history')}
                   style={styles.aboutBtn}
                 >
                   <Text style={styles.aboutText}>📜</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity 
-                  onPress={() => setShowAbout(true)} 
+                <TouchableOpacity
+                  onPress={() => setShowAbout(true)}
                   style={styles.aboutBtn}
                 >
                   <Text style={styles.aboutText}>ℹ️</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity 
-                  onPress={() => setLang(lang === 'en' ? 'ar' : 'en')} 
+                <TouchableOpacity
+                  onPress={() => setLang(lang === 'en' ? 'ar' : 'en')}
                   style={styles.langBtn}
                 >
                   <Text style={styles.langText}>{lang === 'en' ? 'ع' : 'EN'}</Text>
@@ -1141,7 +1121,7 @@ export default function App() {
                 {t.nisabType}:
               </Text>
               <View style={styles.nisabButtons}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[
                     styles.nisabBtn,
                     nisabType === 'silver' && styles.nisabBtnActive
@@ -1158,8 +1138,8 @@ export default function App() {
                     <Text style={styles.recommendedText}>{t.recommended}</Text>
                   )}
                 </TouchableOpacity>
-                
-                <TouchableOpacity 
+
+                <TouchableOpacity
                   style={[
                     styles.nisabBtn,
                     nisabType === 'gold' && styles.nisabBtnActive
@@ -1173,8 +1153,8 @@ export default function App() {
                     {t.gold} {nisabType === 'gold' && '✓'}
                   </Text>
                 </TouchableOpacity>
-                
-                <TouchableOpacity 
+
+                <TouchableOpacity
                   style={[
                     styles.nisabBtn,
                     nisabType === 'both' && styles.nisabBtnActive
@@ -1193,10 +1173,10 @@ export default function App() {
 
             {/* Cards Grid */}
             <View style={styles.cardsGrid}>
-              
+
               {/* Left Column */}
               <View style={styles.leftColumn}>
-                
+
                 {/* Gold Price Card */}
                 <View style={[styles.card3D, styles.goldCard]}>
                   <Text style={styles.cardLabel}>{t.goldPrice}</Text>
@@ -1232,8 +1212,8 @@ export default function App() {
                     </View>
                   </View>
                   <View style={styles.rateInputRow}>
-                    <TextInput 
-                      style={styles.rateInput} 
+                    <TextInput
+                      style={styles.rateInput}
                       value={exchangeRate}
                       keyboardType="decimal-pad"
                       onChangeText={handleRateChange}
@@ -1243,11 +1223,11 @@ export default function App() {
                 </View>
 
                 {/* Update Button */}
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={() => {
                     setRateSource('');
                     fetchAllPrices();
-                  }} 
+                  }}
                   style={styles.updateBtn3D}
                   disabled={loading}
                 >
@@ -1258,138 +1238,119 @@ export default function App() {
 
               {/* Right Column */}
               <View style={styles.rightColumn}>
-                
+
                 {/* Wealth Input Card */}
                 <View style={[styles.card3D, styles.wealthCard]}>
-                  <Text style={styles.cardLabelLarge}>{t.wealthLabel}</Text>
-                  <TextInput 
-                    style={styles.wealthInput} 
-                    placeholder={t.wealthPlaceholder}
-                    placeholderTextColor="#999"
-                    keyboardType="decimal-pad"
-                    value={userWealth}
-                    onChangeText={setUserWealth}
-                  />
-                  
-                  <TouchableOpacity 
-                    style={[styles.calcBtn3D, (!localPriceGoldGram || !localPriceSilverGram || !userWealth) && styles.calcBtnDisabled]} 
-                    onPress={calculateZakat}
-                    disabled={!localPriceGoldGram || !localPriceSilverGram || !userWealth}
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.cardLabelLarge}>{t.wealthLabel}</Text>
+                    <Text style={styles.currentMonthBadge}>
+                      {(new Date()).getMonth() + 1}/{new Date().getFullYear()}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.totalWealthDisplay}>
+                    {currentMonthData.totalWealth.toFixed(2)} <Text style={styles.currencySmall}>{t.currency}</Text>
+                  </Text>
+
+                  <TouchableOpacity
+                    style={styles.manageWealthBtn}
+                    onPress={() => setShowWealthModal(true)}
                   >
-                    <Text style={styles.calcBtnText}>{t.calculateBtn}</Text>
+                    <Text style={styles.manageWealthText}>
+                      {lang === 'ar' ? '➕ إدارة / إضافة أموال' : '➕ Manage / Add Funds'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
-                {/* ===== NEW: TRACKING RESULT CARD ===== */}
-                {zakatResult && zakatResult.payable && zakatTracker && (
-                  <View style={[styles.card3D, styles.trackingCard]}>
-                    <View style={styles.trackingHeader}>
-                      <Text style={styles.trackingTitle}>📊 {t.progress}</Text>
-                      <TouchableOpacity 
-                        onPress={handleResetYear}
-                        style={styles.resetBtn}
-                      >
-                        <Text style={styles.resetBtnText}>🔄</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <ProgressBar progress={getProgress()} lang={lang} />
-
-                    <View style={styles.trackingStats}>
-                      <View style={styles.statItem}>
-                        <Text style={styles.statLabel}>{t.totalPaid}</Text>
-                        <Text style={styles.statValue}>
-                          {getTotalPaid().toFixed(2)}
-                        </Text>
-                      </View>
-                      <View style={styles.statDivider} />
-                      <View style={styles.statItem}>
-                        <Text style={styles.statLabel}>{t.remaining}</Text>
-                        <Text style={[styles.statValue, styles.remainingValue]}>
-                          {getRemaining().toFixed(2)}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <TouchableOpacity 
-                      style={styles.addPaymentBtn}
-                      onPress={() => setShowPaymentModal(true)}
-                    >
-                      <Text style={styles.addPaymentText}>➕ {t.addPayment}</Text>
-                    </TouchableOpacity>
-
-                    {/* Payment List */}
-                    {zakatTracker.payments.length > 0 && (
-                      <View style={styles.paymentList}>
-                        <Text style={styles.paymentListTitle}>{t.paymentHistory}</Text>
-                        {zakatTracker.payments
-                          .sort((a, b) => b.timestamp - a.timestamp)
-                          .slice(0, 3)
-                          .map((payment) => (
-                            <PaymentListItem
-                              key={payment.id}
-                              payment={payment}
-                              onEdit={(p) => {
-                                setEditingPayment(p);
-                                setShowPaymentModal(true);
-                              }}
-                              onDelete={handleDeletePayment}
-                              lang={lang}
-                            />
-                          ))
-                        }
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                {/* Original Result Card (when not tracking or below nisab) */}
-                {zakatResult && (!zakatTracker || !zakatResult.payable) && (
+                {/* Result Tracking Card */}
+                {zakatResult && (
                   <View style={[
-                    styles.card3D, 
-                    styles.resultCard,
-                    zakatResult.payable ? styles.resultGreen : styles.resultAmber
+                    styles.card3D,
+                    zakatResult.payable ? styles.trackingCard : styles.resultCard,
+                    !zakatResult.payable && styles.resultAmber
                   ]}>
-                    <View style={styles.resultHeader}>
-                      <Text style={styles.resultIcon}>
-                        {zakatResult.payable ? '✓' : '○'}
-                      </Text>
-                      <Text style={styles.resultTitle}>
-                        {zakatResult.payable ? t.resultDue : t.resultNotDue}
-                      </Text>
-                    </View>
 
-                    <View style={styles.nisabRow}>
-                      <Text style={styles.nisabLabel}>{t.nisabLabel}:</Text>
-                      <Text style={styles.nisabValue}>{zakatResult.nisab}</Text>
-                    </View>
-                    
-                    <Text style={styles.nisabUsedText}>
-                      {lang === 'ar' ? 'بناءً على' : 'Based on'}: {zakatResult.nisabUsed}
-                    </Text>
-
-                    {zakatResult.payable ? (
-                      <View style={styles.amountBox}>
-                        <Text style={styles.amountLabel}>{t.amountDue}</Text>
-                        <Text style={styles.amountValue}>{zakatResult.amount}</Text>
-                        <Text style={styles.amountCurrency}>{t.currency}</Text>
+                    {!zakatResult.payable ? (
+                      // Below Nisab View
+                      <View>
+                        <View style={styles.resultHeader}>
+                          <Text style={styles.resultIcon}>○</Text>
+                          <Text style={styles.resultTitle}>{t.resultNotDue}</Text>
+                        </View>
+                        <View style={styles.nisabRow}>
+                          <Text style={styles.nisabLabel}>{t.nisabLabel}:</Text>
+                          <Text style={styles.nisabValue}>{zakatResult.nisab}</Text>
+                        </View>
+                        <Text style={styles.nisabUsedText}>
+                          {lang === 'ar' ? 'بناءً على' : 'Based on'}: {zakatResult.nisabUsed}
+                        </Text>
+                        <View style={styles.diffBox}>
+                          <Text style={styles.diffLabel}>{t.diffLabel}</Text>
+                          <Text style={styles.diffValue}>{zakatResult.diff} {t.currency}</Text>
+                        </View>
                       </View>
                     ) : (
-                      <View style={styles.diffBox}>
-                        <Text style={styles.diffLabel}>{t.diffLabel}</Text>
-                        <Text style={styles.diffValue}>{zakatResult.diff} {t.currency}</Text>
-                      </View>
-                    )}
+                      // Payable View with Tracking
+                      <View>
+                        <View style={styles.trackingHeader}>
+                          <Text style={styles.trackingTitle}>📊 {t.progress}</Text>
+                          <TouchableOpacity
+                            onPress={handleResetMonth}
+                            style={styles.resetBtn}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          >
+                            <Text style={styles.resetBtnText}>🗑️</Text>
+                          </TouchableOpacity>
+                        </View>
 
-                    {zakatResult.payable && !zakatTracker && (
-                      <TouchableOpacity 
-                        style={styles.startTrackingBtn}
-                        onPress={() => setNewZakatYear(zakatResult.amount)}
-                      >
-                        <Text style={styles.startTrackingText}>
-                          🎯 {t.setNewZakat}
-                        </Text>
-                      </TouchableOpacity>
+                        <ProgressBar progress={getProgress()} lang={lang} />
+
+                        <View style={styles.trackingStats}>
+                          <View style={styles.statItem}>
+                            <Text style={styles.statLabel}>{t.amountDue}</Text>
+                            <Text style={styles.statValue}>
+                              {currentMonthData.totalZakatDue?.toFixed(2)}
+                            </Text>
+                          </View>
+                          <View style={styles.statDivider} />
+                          <View style={styles.statItem}>
+                            <Text style={styles.statLabel}>{t.remaining}</Text>
+                            <Text style={[styles.statValue, styles.remainingValue]}>
+                              {getRemaining().toFixed(2)}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <TouchableOpacity
+                          style={styles.addPaymentBtn}
+                          onPress={() => setShowPaymentModal(true)}
+                        >
+                          <Text style={styles.addPaymentText}>➕ {t.addPayment}</Text>
+                        </TouchableOpacity>
+
+                        {/* Recent Payments */}
+                        {currentMonthData.payments.length > 0 && (
+                          <View style={styles.paymentList}>
+                            <Text style={styles.paymentListTitle}>{t.paymentHistory}</Text>
+                            {currentMonthData.payments
+                              .slice(0, 2)
+                              .map((payment) => (
+                                <PaymentListItem
+                                  key={payment.id}
+                                  payment={payment}
+                                  onEdit={(p) => {
+                                    setEditingPayment(p);
+                                    setShowPaymentModal(true);
+                                  }}
+                                  onDelete={handleDeletePayment}
+                                  lang={lang}
+                                />
+                              ))
+                            }
+                          </View>
+                        )}
+                      </View>
                     )}
                   </View>
                 )}
@@ -1425,10 +1386,10 @@ export default function App() {
 
 const styles = StyleSheet.create({
   // ... (keeping all existing styles)
-  
+
   // NEW Styles for Nisab Selector
   nisabSelector: {
-    backgroundColor:  '#C9A96115',
+    backgroundColor: '#C9A96115',
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
@@ -1473,19 +1434,19 @@ const styles = StyleSheet.create({
     color: '#C9A961',
     marginTop: 2,
   },
-  
+
   silverCard: {
     backgroundColor: '#F5F5F5',
     borderLeftWidth: 4,
     borderLeftColor: '#999999',
   },
-  
+
   cardSubvalue: {
     fontSize: 10,
     color: '#666',
     marginTop: 2,
   },
-  
+
   nisabUsedText: {
     fontSize: 9,
     color: '#666',
@@ -1493,7 +1454,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontStyle: 'italic',
   },
-  
+
   // Splash Screen
   splashContainer: {
     flex: 1,
@@ -1832,7 +1793,7 @@ const styles = StyleSheet.create({
     minHeight: 190,
   },
   resultGreen: {
-    backgroundColor:'#E6F7EB',
+    backgroundColor: '#E6F7EB',
     borderLeftWidth: 5,
     borderLeftColor: '#1a4d2e',
   },
@@ -1999,312 +1960,269 @@ const styles = StyleSheet.create({
   },
   diffBox: {
     alignItems: 'center',
+    padding: 10,
     backgroundColor: 'rgba(201, 169, 97, 0.1)',
-    padding: 14,
-    borderRadius: 12,
+    borderRadius: 8,
+    marginTop: 8,
   },
   diffLabel: {
     fontSize: 10,
-    color: '#8B4513',
-    marginBottom: 6,
+    color: '#666',
   },
   diffValue: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#8B4513',
+    color: '#C9A961',
   },
 
   footer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  footerText: {
+    color: '#666',
+    fontSize: 10,
+  },
+
+  // ===== NEW STYLES =====
+  currentMonthBadge: {
+    fontSize: 10,
+    color: '#1a4d2e',
+    backgroundColor: 'rgba(26, 77, 46, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  totalWealthDisplay: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: '#1a4d2e',
+    marginVertical: 8,
+    textAlign: 'center',
+  },
+  currencySmall: {
+    fontSize: 14,
+    fontWeight: 'normal',
+  },
+  manageWealthBtn: {
+    backgroundColor: '#1a4d2e',
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
     marginTop: 10,
   },
-  footerText: {
-    fontSize: 10,
-    color: '#E8D7B5',
-    letterSpacing: 0.8,
+  manageWealthText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
   },
-
-  textRight: {
-    textAlign: 'right',
-  },
-
-  // ===== NEW TRACKING STYLES =====
   trackingCard: {
-    backgroundColor: 'rgba(230, 247, 235, 0.98)',
+    backgroundColor: '#FFFFFF',
     borderLeftWidth: 5,
     borderLeftColor: '#1a4d2e',
-    minHeight: 300,
   },
-  
   trackingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 10,
+    zIndex: 100,
+    position: 'relative',
   },
-  
   trackingTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1a4d2e',
-  },
-  
-  resetBtn: {
-    padding: 6,
-  },
-  
-  resetBtnText: {
-    fontSize: 18,
-  },
-  
-  progressContainer: {
-    marginBottom: 20,
-  },
-  
-  progressBarBg: {
-    height: 20,
-    backgroundColor: 'rgba(26, 77, 46, 0.1)',
-    borderRadius: 10,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#1a4d2e',
-    borderRadius: 10,
-  },
-  
-  progressText: {
     fontSize: 14,
     fontWeight: 'bold',
     color: '#1a4d2e',
-    textAlign: 'center',
   },
-  
+  resetBtn: {
+    padding: 8,
+    minWidth: 40,
+    minHeight: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(201, 169, 97, 0.1)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(201, 169, 97, 0.3)',
+    zIndex: 100,
+    elevation: 100,
+    position: 'relative',
+  },
+  resetBtnText: {
+    fontSize: 18,
+  },
+  progressContainer: {
+    height: 8,
+    backgroundColor: '#eee',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginVertical: 10,
+  },
+  progressBarBg: {
+    flex: 1,
+    backgroundColor: '#eee',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#1a4d2e',
+  },
+  progressText: {
+    position: 'absolute',
+    right: 0,
+    top: -15,
+    fontSize: 10,
+    color: '#666',
+  },
   trackingStats: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    backgroundColor: '#f9f9f9',
+    padding: 8,
+    borderRadius: 8,
   },
-  
   statItem: {
-    alignItems: 'center',
     flex: 1,
+    alignItems: 'center',
   },
-  
   statDivider: {
     width: 1,
-    backgroundColor: 'rgba(26, 77, 46, 0.2)',
-    marginHorizontal: 10,
+    backgroundColor: '#ddd',
   },
-  
   statLabel: {
     fontSize: 10,
     color: '#666',
-    marginBottom: 6,
+    marginBottom: 2,
   },
-  
   statValue: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#1a4d2e',
+    color: '#333',
   },
-  
   remainingValue: {
     color: '#C9A961',
   },
-  
   addPaymentBtn: {
-    backgroundColor: '#1a4d2e',
-    paddingVertical: 14,
-    borderRadius: 12,
+    backgroundColor: '#C9A961',
+    paddingVertical: 8,
+    borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 16,
-    shadowColor: '#1a4d2e',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  
-  addPaymentText: {
-    color: '#C9A961',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  
-  paymentList: {
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    borderRadius: 12,
-    padding: 12,
-  },
-  
-  paymentListTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#1a4d2e',
     marginBottom: 10,
   },
-  
+  addPaymentText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  paymentList: {
+    marginTop: 4,
+  },
+  paymentListTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#999',
+    marginBottom: 4,
+    textTransform: 'uppercase'
+  },
   paymentItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#C9A961',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
-  
   paymentInfo: {
-    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
   },
-  
   paymentMonth: {
-    fontSize: 11,
-    color: '#666',
-    marginBottom: 4,
+    fontSize: 10,
+    color: '#999',
+    backgroundColor: '#eee',
+    paddingHorizontal: 4,
+    borderRadius: 4,
   },
-  
   paymentAmount: {
-    fontSize: 14,
     fontWeight: 'bold',
-    color: '#1a4d2e',
+    color: '#333',
   },
-  
   paymentActions: {
     flexDirection: 'row',
     gap: 8,
   },
-  
   editBtn: {
-    padding: 6,
+    padding: 4,
   },
-  
   deleteBtn: {
-    padding: 6,
+    padding: 4,
   },
-  
   actionIcon: {
-    fontSize: 16,
+    fontSize: 14,
   },
 
   // Payment Modal Styles
   paymentModalContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 24,
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 20,
     width: '90%',
-    maxWidth: 400,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 20,
-    borderWidth: 3,
-    borderColor: '#C9A961',
   },
-  
   paymentModalTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#1a4d2e',
-    marginBottom: 24,
+    marginBottom: 20,
     textAlign: 'center',
   },
-  
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: '#666',
     marginBottom: 8,
   },
-  
   paymentInput: {
-    backgroundColor: 'rgba(26, 77, 46, 0.05)',
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    padding: 12,
     fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    borderWidth: 2,
-    borderColor: '#1a4d2e',
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
-  
   dateDisplay: {
-    backgroundColor: 'rgba(26, 77, 46, 0.05)',
-    borderRadius: 12,
-    padding: 14,
     fontSize: 16,
+    padding: 12,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
     color: '#333',
-    borderWidth: 2,
-    borderColor: '#1a4d2e',
-    textAlign: 'center',
   },
-  
   modalActions: {
     flexDirection: 'row',
     gap: 12,
     marginTop: 10,
   },
-  
   modalButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
   },
-  
   cancelButton: {
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#eee',
   },
-  
+  saveButton: {
+    backgroundColor: '#1a4d2e',
+  },
   cancelButtonText: {
     color: '#666',
-    fontSize: 16,
     fontWeight: 'bold',
   },
-  
-  saveButton: {
-    backgroundColor: '#D4AF37',
-  },
-  
   saveButtonText: {
-    color: '#1a4d2e',
-    fontSize: 16,
+    color: '#fff',
     fontWeight: 'bold',
-  },
-
-  startTrackingBtn: {
-    backgroundColor: '#1a4d2e',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  
-  startTrackingText: {
-    color: '#C9A961',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-
-  rtlContainer: {
-    direction: 'rtl',
   },
 });
