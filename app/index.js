@@ -7,6 +7,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import AppGuide from '../components/AppGuide';
 import PrivacyModal from '../components/PrivacyModal';
+import DevelopedByModal from '../components/DevelopedByModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useZakatData } from '../hooks/useZakatData';
 import WealthDetailModal from '../components/WealthDetailModal';
@@ -653,6 +654,7 @@ export default function App() {
   const router = useRouter();
   const [showSplash, setShowSplash] = useState(true);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showDevelopedBy, setShowDevelopedBy] = useState(false);
   const [lang, setLang] = useState('ar');
   const [showGuide, setShowGuide] = useState(false);
 
@@ -1117,12 +1119,26 @@ export default function App() {
             currency={t.currency}
           />
 
+          <DevelopedByModal 
+            visible={showDevelopedBy} 
+            onClose={() => setShowDevelopedBy(false)} 
+            lang={lang} 
+          />
+
           <View style={styles.mainContent}>
 
             {/* Header */}
             <View style={[styles.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
               <View style={[styles.titleContainer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
-                <Text style={[styles.titleIcon, { [isRTL ? 'marginLeft' : 'marginRight']: 12, marginRight: isRTL ? 0 : 12 }]}>☪</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setShowDevelopedBy(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.titleIcon, { [isRTL ? 'marginLeft' : 'marginRight']: 12, marginRight: isRTL ? 0 : 12 }]}>☪</Text>
+                </TouchableOpacity>
                 <View>
                   <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{t.title}</Text>
                   <Text style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t.subtitle}</Text>
