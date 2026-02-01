@@ -43,6 +43,7 @@ export const useZakatData = () => {
       wealthEntries: [],
       payments: [],
       totalWealth: 0,
+      zakatBaseAmount: null, // New field: defaults to totalWealth if null
       totalZakatDue: 0,
       lastUpdated: Date.now(),
       nisabStatus: null
@@ -57,9 +58,14 @@ export const useZakatData = () => {
     // Recalculate totals if wealth entries changed
     if (updates.wealthEntries) {
       updated.totalWealth = updates.wealthEntries.reduce((sum, entry) => sum + entry.amount, 0);
-      // Note: Zakat Due usually depends on Nisab which varies. 
-      // We might want to pass the current Nisab threshold to this function or handle it in the UI.
-      // For now, we'll just update totalWealth. The UI should call 'calculateZakat' to update 'totalZakatDue'.
+      
+      // If no custom base amount is set, we might need to update totalZakatDue based on new wealth
+      // BUT, usually ZakatDue depends on Nisab status.
+      // If zakatBaseAmount IS set, we should probably stick to it unless user resets?
+      // The requirement says: "zakatBaseAmount... defaults to originalZakatBaseAmount".
+      // If wealth entries change, originalZakatBaseAmount (totalWealth) changes.
+      // If user hasn't overridden (zakatBaseAmount is null), we should use new totalWealth?
+      // For now, we leave totalZakatDue logic to explicit calls, except ensuring consistency.
     }
 
     const newData = { ...data, [key]: updated };
@@ -79,7 +85,7 @@ export const useZakatData = () => {
     
     const newEntries = [...monthData.wealthEntries, newEntry];
     
-    // We update wealth, but ZakatDue needs to be recalculated with current prices
+    // We update wealth
     await updateMonthData(currentDate, { wealthEntries: newEntries });
   };
 
@@ -124,10 +130,16 @@ export const useZakatData = () => {
 
   const updateZakatDue = async (nisabValue, nisabType) => {
     const monthData = getMonthData(currentDate);
-    // Logic: If totalWealth >= nisabValue, zakat = wealth * 0.025
+    
+    // If we have a manual base amount, use it. Otherwise use totalWealth.
+    const baseAmount = monthData.zakatBaseAmount !== null && monthData.zakatBaseAmount !== undefined
+      ? monthData.zakatBaseAmount
+      : monthData.totalWealth;
+
+    // Logic: If baseAmount >= nisabValue, zakat = baseAmount * 0.025
     // Else 0.
-    const isPayable = monthData.totalWealth >= nisabValue;
-    const zakatDue = isPayable ? monthData.totalWealth * ZAKAT_RATE : 0;
+    const isPayable = baseAmount >= nisabValue;
+    const zakatDue = isPayable ? baseAmount * ZAKAT_RATE : 0;
 
     await updateMonthData(currentDate, { 
       totalZakatDue: zakatDue,
@@ -137,6 +149,42 @@ export const useZakatData = () => {
         payable: isPayable,
         timestamp: Date.now()
       }
+    });
+  };
+
+  const updateZakatBaseAmount = async (amount) => {
+    // When manually setting base amount, we bypass nisab check for calculation?
+    // "Recalculate: zakatDue = zakatBaseAmount × 0.025"
+    // So we just set totalZakatDue directly based on the new amount.
+    
+    let newBase = null;
+    let newDue = 0;
+
+    if (amount !== null && amount !== undefined) {
+      newBase = parseFloat(amount);
+      newDue = newBase * ZAKAT_RATE;
+    } else {
+      // Resetting to original
+      const monthData = getMonthData(currentDate);
+      newBase = null; // Will default to totalWealth
+      // We need to re-run full calc ideally, but simpler:
+      // If resetting, we should probably re-check nisab? 
+      // For this specific requirement "Reset to original value... Recalculates values accordingly",
+      // we might need the current Nisab. 
+      // However, if we just want to revert to "Total Wealth * 2.5%", we can do:
+      newDue = monthData.totalWealth * ZAKAT_RATE; 
+      // NOTE: This assumes it's payable. If it wasn't payable originally, this might be wrong.
+      // But the user is in the "History" view editing this. 
+      // Let's assume if they are editing, they are managing a payable month or forcing it.
+      // If we want strict correctness, we'd need the stored nisabStatus.
+      if (monthData.nisabStatus && !monthData.nisabStatus.payable) {
+         newDue = 0;
+      }
+    }
+
+    await updateMonthData(currentDate, {
+      zakatBaseAmount: newBase,
+      totalZakatDue: newDue
     });
   };
 
@@ -163,6 +211,7 @@ export const useZakatData = () => {
     updatePayment,
     deletePayment,
     updateZakatDue,
+    updateZakatBaseAmount, // New function
     resetMonth,
     refresh: loadData
   };

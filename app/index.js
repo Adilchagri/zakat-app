@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AppGuide from '../components/AppGuide';
+import PrivacyModal from '../components/PrivacyModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useZakatData } from '../hooks/useZakatData';
 import WealthDetailModal from '../components/WealthDetailModal';
@@ -462,61 +463,7 @@ const IslamicQuoteSlider = ({ lang }) => {
   );
 };
 
-// About Modal Component
-const AboutModal = ({ visible, onClose, lang }) => {
-  const t = content[lang];
-  const isRTL = lang === 'ar';
 
-  return (
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalIcon}>☪</Text>
-            <Text style={styles.modalTitle}>Zakat Tracker</Text>
-            <Text style={styles.modalSubtitle}>متتبع الزكاة</Text>
-          </View>
-
-          <View style={styles.modalBody}>
-            <Text style={[styles.devLabel, isRTL && styles.textRight]}>
-              {t.developedBy}
-            </Text>
-
-            <View style={styles.devCard}>
-              <Text style={styles.devName}>👨‍💻 Adil Chagri</Text>
-            </View>
-
-            <View style={styles.devCard}>
-              <Text style={styles.devName}>👨‍💻 Chouaib Jbel</Text>
-            </View>
-
-            <View style={styles.devCard}>
-              <Text style={styles.devName}>👨‍💻 Amine Bazaoui</Text>
-            </View>
-
-            <Text style={styles.versionText}>Version 2.0.0</Text>
-            <Text style={styles.yearText}>© 2026</Text>
-          </View>
-
-          <TouchableOpacity 
-            style={styles.closeButton} 
-            onPress={() => {
-              Haptics.selectionAsync();
-              onClose();
-            }}
-          >
-            <Text style={styles.closeButtonText}>{t.close}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-};
 
 // ===== PAYMENT MODAL COMPONENT =====
 const PaymentModal = ({ visible, onClose, onSave, lang, editingPayment }) => {
@@ -662,29 +609,28 @@ const monthNames = {
 // ===== PAYMENT LIST ITEM =====
 const PaymentListItem = ({ payment, onEdit, onDelete, lang }) => {
   const t = content[lang];
-  // Date is removed to save space
+  const isRTL = lang === 'ar';
 
   return (
-    <View style={styles.paymentItem}>
-      <View style={styles.paymentInfo}>
-        {/* Date removed */}
-        <Text 
-          style={styles.paymentAmount} 
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
-          allowFontScaling={false}
-        >
-          {payment.amount.toFixed(0)} {t.currency}
+    <View style={[styles.paymentRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+      <View style={styles.amountContainer}>
+        <Text style={[styles.amountText, { textAlign: isRTL ? 'right' : 'left' }]}>
+          {payment.amount} {t.currency}
         </Text>
       </View>
-      <View style={styles.paymentActions}>
+      
+      <View style={[
+        styles.actionsContainer, 
+        { flexDirection: isRTL ? 'row-reverse' : 'row' },
+        !isRTL && { marginTop: 2 }
+      ]}>
         <TouchableOpacity 
           onPress={() => {
             Haptics.selectionAsync();
             onEdit(payment);
           }} 
-          style={styles.editBtn}
+          style={styles.actionBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Text style={styles.actionIcon}>✏️</Text>
         </TouchableOpacity>
@@ -693,7 +639,8 @@ const PaymentListItem = ({ payment, onEdit, onDelete, lang }) => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             onDelete(payment);
           }} 
-          style={styles.deleteBtn}
+          style={[styles.actionBtn, styles.deleteBtn]}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Text style={styles.actionIcon}>🗑️</Text>
         </TouchableOpacity>
@@ -705,7 +652,7 @@ const PaymentListItem = ({ payment, onEdit, onDelete, lang }) => {
 export default function App() {
   const router = useRouter();
   const [showSplash, setShowSplash] = useState(true);
-  const [showAbout, setShowAbout] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const [lang, setLang] = useState('ar');
   const [showGuide, setShowGuide] = useState(false);
 
@@ -714,11 +661,47 @@ export default function App() {
   const [silverPriceUSD, setSilverPriceUSD] = useState(null);
   const [exchangeRate, setExchangeRate] = useState('');
   const [rateSource, setRateSource] = useState('');
+  
+  // Manual Override State
+  const [manualGoldPrice, setManualGoldPrice] = useState(null);
+  const [manualSilverPrice, setManualSilverPrice] = useState(null);
+
   const [localPriceGoldGram, setLocalPriceGoldGram] = useState(null);
   const [localPriceSilverGram, setLocalPriceSilverGram] = useState(null);
   const [isRateFocused, setIsRateFocused] = useState(false);
 
   const [nisabType, setNisabType] = useState('silver');
+
+  // Manual Handlers
+  const handleGoldManualChange = (text) => {
+    if (text === '' || text === null) {
+      setManualGoldPrice(null);
+      if (goldPriceUSD && exchangeRate && !isNaN(exchangeRate)) {
+        const val = (goldPriceUSD * parseFloat(exchangeRate)) / 31.1035;
+        setLocalPriceGoldGram(val.toFixed(2));
+      } else {
+        setLocalPriceGoldGram(null);
+      }
+    } else {
+      setManualGoldPrice(text);
+      setLocalPriceGoldGram(text);
+    }
+  };
+
+  const handleSilverManualChange = (text) => {
+    if (text === '' || text === null) {
+      setManualSilverPrice(null);
+      if (silverPriceUSD && exchangeRate && !isNaN(exchangeRate)) {
+        const val = (silverPriceUSD * parseFloat(exchangeRate)) / 31.1035;
+        setLocalPriceSilverGram(val.toFixed(2));
+      } else {
+        setLocalPriceSilverGram(null);
+      }
+    } else {
+      setManualSilverPrice(text);
+      setLocalPriceSilverGram(text);
+    }
+  };
   const [loading, setLoading] = useState(true);
   const [zakatResult, setZakatResult] = useState(null);
 
@@ -970,21 +953,28 @@ export default function App() {
 
   const checkFirstLaunch = async () => {
     try {
-      const seen = await AsyncStorage.getItem('has_seen_guide');
-      if (!seen) setShowGuide(true);
+      const seenGuide = await AsyncStorage.getItem('has_seen_guide');
+      if (!seenGuide) setShowGuide(true);
+
+      const seenPrivacy = await AsyncStorage.getItem('has_seen_privacy');
+      if (!seenPrivacy) setShowPrivacy(true);
     } catch (e) {
-      console.log('Guide storage error', e);
+      console.log('Storage error', e);
     }
   };
 
   const updateLocalPrices = (goldPrice, silverPrice, rate) => {
     if (goldPrice && rate && !isNaN(rate) && rate > 0) {
       const goldGramPrice = (goldPrice * rate) / 31.1035;
-      setLocalPriceGoldGram(goldGramPrice.toFixed(2));
+      if (manualGoldPrice === null) {
+        setLocalPriceGoldGram(goldGramPrice.toFixed(2));
+      }
     }
     if (silverPrice && rate && !isNaN(rate) && rate > 0) {
       const silverGramPrice = (silverPrice * rate) / 31.1035;
-      setLocalPriceSilverGram(silverGramPrice.toFixed(2));
+      if (manualSilverPrice === null) {
+        setLocalPriceSilverGram(silverGramPrice.toFixed(2));
+      }
     }
   };
 
@@ -1097,7 +1087,14 @@ export default function App() {
             <View style={styles.geometricPattern} />
           </View>
 
-          <AboutModal visible={showAbout} onClose={() => setShowAbout(false)} lang={lang} />
+          <PrivacyModal 
+            visible={showPrivacy} 
+            onAccept={async () => {
+              await AsyncStorage.setItem('has_seen_privacy', 'true');
+              setShowPrivacy(false);
+            }} 
+            lang={lang} 
+          />
 
           <PaymentModal
             visible={showPaymentModal}
@@ -1123,16 +1120,16 @@ export default function App() {
           <View style={styles.mainContent}>
 
             {/* Header */}
-            <View style={styles.header}>
-              <View style={styles.titleContainer}>
-                <Text style={styles.titleIcon}>☪</Text>
+            <View style={[styles.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+              <View style={[styles.titleContainer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+                <Text style={[styles.titleIcon, { [isRTL ? 'marginLeft' : 'marginRight']: 12, marginRight: isRTL ? 0 : 12 }]}>☪</Text>
                 <View>
-                  <Text style={styles.title}>{t.title}</Text>
-                  <Text style={styles.subtitle}>{t.subtitle}</Text>
+                  <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{t.title}</Text>
+                  <Text style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t.subtitle}</Text>
                 </View>
               </View>
 
-              <View style={styles.headerButtons}>
+              <View style={[styles.headerButtons, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
                 <TouchableOpacity
                   onPress={() => {
                     Haptics.selectionAsync();
@@ -1156,7 +1153,7 @@ export default function App() {
                 <TouchableOpacity
                   onPress={() => {
                     Haptics.selectionAsync();
-                    setShowAbout(true);
+                    setShowPrivacy(true);
                   }}
                   style={styles.aboutBtn}
                 >
@@ -1258,9 +1255,23 @@ export default function App() {
                       <Text style={styles.cardValue} allowFontScaling={false}>
                         ${goldPriceUSD?.toFixed(0)}
                       </Text>
-                      <Text style={styles.cardSubvalue} adjustsFontSizeToFit numberOfLines={1}>
-                        {localPriceGoldGram} {t.currency}/g
-                      </Text>
+                      <View style={styles.manualInputContainer}>
+                        <TextInput
+                          style={[
+                            styles.cardSubvalueInput,
+                            manualGoldPrice !== null && styles.manualInputActive
+                          ]}
+                          value={localPriceGoldGram ? localPriceGoldGram.toString() : ''}
+                          onChangeText={handleGoldManualChange}
+                          keyboardType="decimal-pad"
+                          placeholder="0.00"
+                          placeholderTextColor="#ccc"
+                        />
+                        <Text style={styles.cardSubvalueSuffix}>{t.currency}/g</Text>
+                      </View>
+                      {manualGoldPrice !== null && (
+                         <Text style={styles.manualLabel}>{lang === 'ar' ? 'يدوي' : 'Manual'}</Text>
+                      )}
                     </>
                   )}
                 </View>
@@ -1275,9 +1286,23 @@ export default function App() {
                       <Text style={styles.cardValue} adjustsFontSizeToFit numberOfLines={1}>
                         ${silverPriceUSD?.toFixed(2)}
                       </Text>
-                      <Text style={styles.cardSubvalue} adjustsFontSizeToFit numberOfLines={1}>
-                        {localPriceSilverGram} {t.currency}/g
-                      </Text>
+                      <View style={styles.manualInputContainer}>
+                        <TextInput
+                          style={[
+                            styles.cardSubvalueInput,
+                            manualSilverPrice !== null && styles.manualInputActive
+                          ]}
+                          value={localPriceSilverGram ? localPriceSilverGram.toString() : ''}
+                          onChangeText={handleSilverManualChange}
+                          keyboardType="decimal-pad"
+                          placeholder="0.00"
+                          placeholderTextColor="#ccc"
+                        />
+                        <Text style={styles.cardSubvalueSuffix}>{t.currency}/g</Text>
+                      </View>
+                      {manualSilverPrice !== null && (
+                         <Text style={styles.manualLabel}>{lang === 'ar' ? 'يدوي' : 'Manual'}</Text>
+                      )}
                     </>
                   )}
                 </View>
@@ -1394,7 +1419,7 @@ export default function App() {
                           </View>
                           <TouchableOpacity
                             onPress={handleResetMonth}
-                            style={styles.resetBtn}
+                            style={[styles.resetBtn, !isRTL && { marginTop: 2 }]}
                             activeOpacity={0.7}
                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                           >
@@ -1409,6 +1434,20 @@ export default function App() {
                             <Text style={styles.statLabel}>{t.amountDue}</Text>
                             <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>
                               {currentMonthData.totalZakatDue?.toFixed(2)}
+                            </Text>
+                          </View>
+                          <View style={styles.statDivider} />
+                          <View style={styles.statItem}>
+                            <Text style={styles.statLabel}>{t.totalPaid}</Text>
+                            <Text 
+                              style={[
+                                styles.statValue, 
+                                { color: currentMonthData.isManualTotal ? '#2E86DE' : '#1a4d2e' }
+                              ]} 
+                              adjustsFontSizeToFit 
+                              numberOfLines={1}
+                            >
+                              {getTotalPaid().toFixed(2)}
                             </Text>
                           </View>
                           <View style={styles.statDivider} />
@@ -1556,6 +1595,39 @@ const styles = StyleSheet.create({
     color: '#888',
     marginTop: 4,
     fontWeight: '500',
+  },
+
+  // Manual Override Styles
+  manualInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  cardSubvalueInput: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#888',
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
+    paddingVertical: 2,
+    minWidth: 50,
+    textAlign: 'left',
+  },
+  manualInputActive: {
+    color: '#C9A961',
+    borderBottomColor: '#C9A961',
+    fontWeight: 'bold',
+  },
+  cardSubvalueSuffix: {
+    fontSize: 11,
+    color: '#888',
+    marginLeft: 4,
+  },
+  manualLabel: {
+    fontSize: 9,
+    color: '#C9A961',
+    marginTop: 2,
+    fontWeight: 'bold',
   },
 
   nisabUsedText: {
@@ -2156,7 +2228,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
     color: '#1a4d2e',
-    flex: 1, // Ensure title takes space without pushing delete button
+  },
+  currentMonthText: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
+    fontWeight: '500',
   },
   resetBtn: {
     padding: 8,
@@ -2259,51 +2336,43 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  paymentItem: {
+  paymentRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: moderateScale(10),
+    width: '100%',
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  paymentInfo: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
+  amountContainer: {
     flex: 1,
-    marginRight: moderateScale(8), 
+    minWidth: 0,
   },
-  paymentMonth: {
-    fontSize: moderateScale(9),
-    color: '#888',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: moderateScale(6),
-    paddingVertical: moderateScale(3),
-    borderRadius: 6,
-    overflow: 'hidden',
+  amountText: {
+    fontSize: 18,
     fontWeight: '700',
-    marginRight: moderateScale(4),
+    color: '#1E4D2B',
   },
-  paymentAmount: {
-    fontSize: moderateScale(22),
-    fontWeight: '800',
-    color: '#111',
-    textAlign: 'left',
-    flex: 1,
-  },
-  paymentActions: {
+  actionsContainer: {
     flexDirection: 'row',
-    gap: moderateScale(10),
-    width: moderateScale(72), 
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    gap: 10,
+    marginStart: 12,
     flexShrink: 0,
   },
-  editBtn: {
-    padding: moderateScale(5),
+  actionBtn: {
+    padding: moderateScale(6),
+    borderRadius: 8,
+    backgroundColor: '#f9f9f9',
+    width: moderateScale(36),
+    height: moderateScale(36),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   deleteBtn: {
-    padding: moderateScale(5),
+    backgroundColor: '#fff0f0',
   },
   actionIcon: {
     fontSize: moderateScale(16),

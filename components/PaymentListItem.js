@@ -1,30 +1,30 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { moderateScale } from '../utils/scale';
-
 
 export default function PaymentListItem({ payment, onEdit, onDelete, lang, currency }) {
+  const amount = payment.amount;
   const displayCurrency = currency || (lang === 'ar' ? 'د.م.' : 'MAD');
+  const isRTL = lang === 'ar';
 
   return (
-    <View style={styles.paymentItem}>
-      <View style={styles.paymentInfo}>
-        <Text 
-          style={styles.paymentAmount} 
-          numberOfLines={1} 
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
-          allowFontScaling={false}
-        >
-          {payment.amount.toFixed(0)} {displayCurrency}
+    <View style={[styles.paymentRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+      <View style={styles.amountContainer}>
+        <Text style={[styles.amountText, { textAlign: isRTL ? 'right' : 'left' }]}>
+          {amount} {displayCurrency}
         </Text>
       </View>
-      <View style={styles.paymentActions}>
-        <TouchableOpacity onPress={() => onEdit(payment)} style={styles.editBtn}>
-          <Text style={styles.actionIcon}>✏️</Text>
+
+      <View style={[
+        styles.actionsContainer, 
+        { flexDirection: isRTL ? 'row-reverse' : 'row' },
+        !isRTL && { marginTop: 2 }
+      ]}>
+        <TouchableOpacity onPress={() => onEdit(payment)}>
+          <Text style={{ fontSize: 20 }}>✏️</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => onDelete(payment)} style={styles.deleteBtn}>
-          <Text style={styles.actionIcon}>🗑️</Text>
+
+        <TouchableOpacity onPress={() => onDelete(payment)}>
+          <Text style={{ fontSize: 20 }}>🗑️</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -32,45 +32,34 @@ export default function PaymentListItem({ payment, onEdit, onDelete, lang, curre
 }
 
 const styles = StyleSheet.create({
-  paymentItem: {
+  paymentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: moderateScale(10),
+    width: '100%',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
-    minHeight: moderateScale(52),
-    paddingHorizontal: moderateScale(4),
   },
 
-  paymentInfo: {
+  amountContainer: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  amountText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E4D2B',
+  },
+
+  actionsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    marginRight: moderateScale(8),
-  },
-
-  paymentAmount: {
-    fontSize: moderateScale(22),
-    fontWeight: '800',
-    color: '#111',
-    flex: 1,
-  },
-
-  paymentActions: {
-    flexDirection: 'row',
-    gap: moderateScale(10),
-    width: moderateScale(72),
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    gap: 10,
+    marginStart: 12,
     flexShrink: 0,
   },
-  editBtn: {
-    padding: moderateScale(5),
-  },
-  deleteBtn: {
-    padding: moderateScale(5),
-  },
-  actionIcon: {
-    fontSize: moderateScale(16),
-  },
-
 });

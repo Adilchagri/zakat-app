@@ -6,6 +6,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useZakatData } from '../hooks/useZakatData';
 import PaymentModal from '../components/PaymentModal';
+import EditBaseAmountModal from '../components/EditBaseAmountModal';
 import ProgressBar from '../components/ProgressBar';
 import PaymentListItem from '../components/PaymentListItem';
 import * as Haptics from 'expo-haptics';
@@ -22,18 +23,20 @@ export default function History() {
   const { 
     data, refresh, currentMonthData, 
     addPayment, updatePayment, deletePayment, resetMonth,
-    setCurrentDate // We need this to switch months
+    setCurrentDate, updateZakatBaseAmount
   } = useZakatData();
   
   const [lang, setLang] = useState('ar');
+  const isRTL = lang === 'ar';
   const [viewMode, setViewMode] = useState('calendar'); // Default to calendar
   const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const currentYear = new Date().getFullYear();
 
-  // Payment Modal State
+  // Modal States
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
+  const [showEditBaseModal, setShowEditBaseModal] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -145,6 +148,13 @@ export default function History() {
   const remaining = Math.max(0, totalDue - totalPaid);
   const progress = totalDue > 0 ? Math.min(100, (totalPaid / totalDue) * 100) : 0;
 
+  // Base Amount Logic
+  const originalBase = currentMonthData?.totalWealth || 0;
+  const currentBase = currentMonthData?.zakatBaseAmount !== undefined && currentMonthData?.zakatBaseAmount !== null
+    ? currentMonthData.zakatBaseAmount
+    : originalBase;
+  const isBaseModified = currentMonthData?.zakatBaseAmount !== undefined && currentMonthData?.zakatBaseAmount !== null;
+
   // --- Helper to get month status for calendar ---
   const getMonthStatus = (monthIndex) => {
     const key = `${currentYear}-${monthIndex}`;
@@ -183,7 +193,7 @@ export default function History() {
       <Text style={styles.sectionTitle}>
         {lang === 'ar' ? `🗓️ تقويم ${currentYear}` : `🗓️ ${currentYear} Calendar`}
       </Text>
-      <View style={styles.calendarGrid}>
+      <View style={[styles.calendarGrid, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         {Array.from({ length: 12 }, (_, i) => {
           const status = getMonthStatus(i);
           const bgColor = getMonthColor(status);
@@ -210,7 +220,7 @@ export default function History() {
       </View>
       
       {/* Legend */}
-      <View style={styles.legendContainer}>
+      <View style={[styles.legendContainer, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <View style={styles.legendItem}>
           <View style={[styles.legendBox, { backgroundColor: '#1a4d2e'}]} />
           <Text style={styles.legendText}>{lang === 'ar' ? 'مكتمل' : 'Complete'}</Text>
@@ -229,7 +239,7 @@ export default function History() {
 
   const TrackingView = () => (
     <View style={styles.trackingContainer}>
-      <View style={styles.trackingHeader}>
+      <View style={[styles.trackingHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <TouchableOpacity onPress={() => setViewMode('calendar')} style={styles.backToCalBtn}>
           <Text style={styles.backToCalText}>📅</Text>
         </TouchableOpacity>
@@ -244,98 +254,112 @@ export default function History() {
         <View style={{width: 40}} /> 
       </View>
 
-      {totalDue > 0 ? (
-        <View style={styles.activeTracking}>
-          <ProgressBar progress={progress} />
-          
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statLabel}>{lang === 'ar' ? 'المطلوب' : 'Due'}</Text>
-              <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>
-                {totalDue.toFixed(2)}
-              </Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statLabel}>{lang === 'ar' ? 'المدفوع' : 'Paid'}</Text>
-              <Text style={[styles.statValue, { color: '#1a4d2e' }]} adjustsFontSizeToFit numberOfLines={1}>
-                {totalPaid.toFixed(2)}
-              </Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statLabel}>{lang === 'ar' ? 'المتبقي' : 'Remaining'}</Text>
-              <Text style={[styles.statValue, { color: '#C9A961' }]} adjustsFontSizeToFit numberOfLines={1}>
-                {remaining.toFixed(2)}
-              </Text>
-            </View>
-          </View>
-
-          <TouchableOpacity 
-            style={styles.addPaymentBtn}
-            onPress={() => {
-              Haptics.selectionAsync();
-              setEditingPayment(null);
-              setShowPaymentModal(true);
-            }}
+      {/* Base Amount Summary (Editable) */}
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryLabel}>
+          {lang === 'ar' ? 'المبلغ الذي حُسِبت عليه الزكاة' : 'Zakat Calculated On'}
+        </Text>
+        <TouchableOpacity 
+          style={styles.totalPaidContainer}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setShowEditBaseModal(true);
+          }}
+        >
+          <Text 
+            style={[styles.totalPaidAmount, isBaseModified && { color: '#2E86DE' }]} 
+            adjustsFontSizeToFit 
+            numberOfLines={1}
           >
-            <Text style={styles.addPaymentText}>
-              {lang === 'ar' ? '➕ إضافة دفعة' : '➕ Add Payment'}
-            </Text>
-          </TouchableOpacity>
+            {currentBase.toFixed(2)} 
+            <Text style={styles.currencySub}>{lang === 'ar' ? ' د.م.' : ' MAD'}</Text>
+          </Text>
+          <Text style={styles.editIconHint}>✏️</Text>
+        </TouchableOpacity>
+        {isBaseModified && (
+          <Text style={styles.modifiedLabel}>{lang === 'ar' ? '(معدل يدوياً)' : '(Manually Adjusted)'}</Text>
+        )}
+      </View>
 
-          <View style={styles.paymentsList}>
-            <Text style={styles.listTitle}>
-              {lang === 'ar' ? 'سجل المدفوعات' : 'Payment History'}
+      {/* Stats and Payments (Always show even if 0 to allow adding payments or viewing base) */}
+      <View style={styles.activeTracking}>
+        {totalDue > 0 && <ProgressBar progress={progress} />}
+        
+        <View style={[styles.statsRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>{lang === 'ar' ? 'المطلوب' : 'Due'}</Text>
+            <Text style={styles.statValue} adjustsFontSizeToFit numberOfLines={1}>
+              {totalDue.toFixed(2)}
             </Text>
-            {currentMonthData.payments && currentMonthData.payments.length > 0 ? (
-              currentMonthData.payments.map((p) => (
-                <PaymentListItem
-                  key={p.id}
-                  payment={p}
-                  onEdit={(item) => {
-                    setEditingPayment(item);
-                    setShowPaymentModal(true);
-                  }}
-                  onDelete={handleDeletePayment}
-                  lang={lang}
-                />
-              ))
-            ) : (
-              <Text style={styles.emptyListText}>
-                {lang === 'ar' ? 'لا توجد مدفوعات بعد' : 'No payments yet'}
-              </Text>
-            )}
           </View>
-
-          <TouchableOpacity onPress={handleResetMonth} style={styles.resetLink}>
-            <Text style={styles.resetLinkText}>
-              {lang === 'ar' ? 'إعادة ضبط الشهر' : 'Reset Month'}
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>{lang === 'ar' ? 'المدفوع' : 'Paid'}</Text>
+            <Text style={[styles.statValue, { color: '#1a4d2e' }]} adjustsFontSizeToFit numberOfLines={1}>
+              {totalPaid.toFixed(2)}
             </Text>
-          </TouchableOpacity>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>{lang === 'ar' ? 'المتبقي' : 'Remaining'}</Text>
+            <Text style={[styles.statValue, { color: '#C9A961' }]} adjustsFontSizeToFit numberOfLines={1}>
+              {remaining.toFixed(2)}
+            </Text>
+          </View>
         </View>
-      ) : (
-        <View style={styles.emptyTracking}>
-          <Text style={styles.emptyIcon}>💰</Text>
-          <Text style={styles.emptyTitle}>
-            {lang === 'ar' ? 'لا توجد زكاة مستحقة' : 'No Zakat Due'}
+
+        <TouchableOpacity 
+          style={styles.addPaymentBtn}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setEditingPayment(null);
+            setShowPaymentModal(true);
+          }}
+        >
+          <Text style={styles.addPaymentText}>
+            {lang === 'ar' ? '➕ إضافة دفعة' : '➕ Add Payment'}
           </Text>
-          <Text style={styles.emptySub}>
-            {lang === 'ar' 
-              ? 'الرجاء العودة للصفحة الرئيسية وإضافة الأموال لهذا الشهر لحساب الزكاة' 
-              : 'Please return to home page and add funds for this month to calculate Zakat'}
+        </TouchableOpacity>
+
+        <View style={styles.paymentsList}>
+          <Text style={[styles.listTitle, { textAlign: isRTL ? 'right' : 'left' }]}>
+            {lang === 'ar' ? 'سجل المدفوعات' : 'Payment History'}
           </Text>
+          {currentMonthData.payments && currentMonthData.payments.length > 0 ? (
+            currentMonthData.payments.map((p) => (
+              <PaymentListItem
+                key={p.id}
+                payment={p}
+                onEdit={(item) => {
+                  setEditingPayment(item);
+                  setShowPaymentModal(true);
+                }}
+                onDelete={handleDeletePayment}
+                lang={lang}
+              />
+            ))
+          ) : (
+            <Text style={styles.emptyListText}>
+              {lang === 'ar' ? 'لا توجد مدفوعات بعد' : 'No payments yet'}
+            </Text>
+          )}
         </View>
-      )}
+
+        <TouchableOpacity onPress={handleResetMonth} style={styles.resetLink}>
+          <Text style={styles.resetLinkText}>
+            {lang === 'ar' ? 'إعادة ضبط الشهر' : 'Reset Month'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Text style={styles.backIcon}>{isRTL ? '→' : '←'}</Text>
         </TouchableOpacity>
         <View style={styles.titleContainer}>
           <Text style={styles.title}>
@@ -369,6 +393,22 @@ export default function History() {
         lang={lang}
         editingPayment={editingPayment}
       />
+
+      <EditBaseAmountModal
+        visible={showEditBaseModal}
+        onClose={() => setShowEditBaseModal(false)}
+        onSave={async (val) => {
+          await updateZakatBaseAmount(val);
+          setShowEditBaseModal(false);
+        }}
+        onReset={async () => {
+          await updateZakatBaseAmount(null);
+          setShowEditBaseModal(false);
+        }}
+        lang={lang}
+        currentAmount={currentBase}
+        originalAmount={originalBase}
+      />
     </View>
   );
 }
@@ -376,7 +416,7 @@ export default function History() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a2818' },
   header: { 
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', 
+    alignItems: 'center', justifyContent: 'space-between', 
     paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, 
     // Removed border for cleaner look
   },
@@ -400,7 +440,7 @@ const styles = StyleSheet.create({
     fontSize: 20, fontWeight: 'bold', color: '#C9A961', marginBottom: 20, textAlign: 'center'
   },
   calendarGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center'
+    flexWrap: 'wrap', gap: 10, justifyContent: 'center'
   },
   calendarMonth: {
     width: '30%', aspectRatio: 1, borderRadius: 16,
@@ -418,7 +458,7 @@ const styles = StyleSheet.create({
     fontSize: 14, color: '#FFF', marginTop: 4
   },
   legendContainer: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginTop: 24, justifyContent: 'center'
+    flexWrap: 'wrap', gap: 16, marginTop: 24, justifyContent: 'center'
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   legendBox: { width: 14, height: 14, borderRadius: 4 },
@@ -433,7 +473,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1, shadowRadius: 12, elevation: 6
   },
   trackingHeader: { 
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 
+    justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 
   },
   backToCalBtn: {
     padding: 10, backgroundColor: '#f5f5f5', borderRadius: 12
@@ -442,8 +482,33 @@ const styles = StyleSheet.create({
   trackingTitle: { fontSize: 20, fontWeight: 'bold', color: '#1a4d2e', textAlign: 'center' },
   trackingSubtitle: { fontSize: 15, color: '#666', marginTop: 4, textAlign: 'center' },
   
+  // Summary Card Styles (Neutral, Editable)
+  summaryCard: {
+    backgroundColor: '#F5F5F5', borderRadius: 20, padding: 20, marginBottom: 24,
+    alignItems: 'center', borderWidth: 1, borderColor: '#E0E0E0'
+  },
+  summaryLabel: {
+    fontSize: 12, fontWeight: '700', color: '#757575', textTransform: 'uppercase',
+    letterSpacing: 0.5, marginBottom: 8
+  },
+  totalPaidContainer: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8
+  },
+  totalPaidAmount: {
+    fontSize: 32, fontWeight: 'bold', color: '#424242' // Default neutral
+  },
+  currencySub: {
+    fontSize: 14, fontWeight: 'normal', color: '#9E9E9E'
+  },
+  editIconHint: {
+    fontSize: 18, color: '#2E86DE'
+  },
+  modifiedLabel: {
+    marginTop: 6, fontSize: 11, color: '#2E86DE', fontWeight: 'bold'
+  },
+  
   statsRow: { 
-    flexDirection: 'row', justifyContent: 'space-between', 
+    justifyContent: 'space-between', 
     backgroundColor: '#f8f9fa', padding: 16, borderRadius: 16, marginBottom: 24 
   },
   statItem: { alignItems: 'center', flex: 1 },
@@ -468,7 +533,7 @@ const styles = StyleSheet.create({
   resetLink: { marginTop: 30, alignItems: 'center', padding: 10 },
   resetLinkText: { color: '#FF5252', fontSize: 14, fontWeight: '600' },
 
-  // Empty State
+  // Empty State (Reused active logic now, but keeping style if needed for specialized states)
   emptyTracking: { alignItems: 'center', padding: 30 },
   emptyIcon: { fontSize: 60, marginBottom: 16 },
   emptyTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },

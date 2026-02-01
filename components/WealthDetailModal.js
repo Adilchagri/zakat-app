@@ -93,10 +93,12 @@ export default function WealthDetailModal({
             <View style={styles.list}>
               {wealthEntries && wealthEntries.length > 0 ? (
                 wealthEntries.map((item) => (
-                  <View key={item.id} style={styles.listItem}>
+                  <View key={item.id} style={[styles.listItem, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
                     <View style={styles.itemInfo}>
-                      <Text style={styles.itemAmount}>{item.amount.toFixed(2)} {currency}</Text>
-                      <Text style={styles.itemDate}>
+                      <Text style={[styles.itemAmount, { textAlign: isRTL ? 'right' : 'left' }]}>
+                        {item.amount.toFixed(2)} {currency}
+                      </Text>
+                      <Text style={[styles.itemDate, { textAlign: isRTL ? 'right' : 'left' }]}>
                         {new Date(item.timestamp).toLocaleDateString()}
                       </Text>
                     </View>
